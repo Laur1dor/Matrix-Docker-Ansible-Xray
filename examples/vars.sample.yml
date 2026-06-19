@@ -180,6 +180,12 @@ matrix_bot_baibot_container_extra_arguments:
   - "--env"
   - "no_proxy=localhost,127.0.0.1,::1,example.com,.example.com,matrix-synapse,matrix-authentication-service,matrix-traefik,matrix-postgres,172.16.0.0/12,10.0.0.0/8,192.168.0.0/16"
 
+# ===== Bridges: enable E2EE for ALL mautrix bridges =====
+# DMs with bridge bots are encrypted by default here, so bridges MUST support E2EE,
+# otherwise the bot replies "this bridge was not configured to support encryption".
+matrix_bridges_encryption_enabled: true
+matrix_bridges_encryption_default: true
+
 # ===== Bridges — Batch A (direct, no proxy): Discord, Instagram, Android-SMS =====
 # Self-onboarding: each user DMs the bridge bot and logs into their own account.
 matrix_mautrix_discord_enabled: true
