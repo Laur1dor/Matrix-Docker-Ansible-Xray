@@ -1,0 +1,48 @@
+# ============================================================================
+#  NEVER commit real secrets. This file blocks the usual offenders.
+#  The ONLY config that belongs in git is examples/vars.sample.yml (placeholders).
+# ============================================================================
+
+# Real inventory / host vars (hold passwords, API keys, tokens)
+vars.yml
+vars.*.yml
+!examples/vars.sample.yml
+inventory/
+host_vars/
+hosts
+
+# Backups & scratch copies
+*.bak
+*.bak.*
+*.orig
+*.tmp
+vars.server.yml
+scrub-vars.py
+
+# Secrets, keys, tokens
+.secrets/
+*.key
+*.pem
+*.crt
+*.token
+*_token
+signing.key
+*.signing.key
+
+# Xray upstream material (real VLESS links / subscription URLs)
+links.txt
+sub.url
+config.json
+config.new.json
+proxy-domains.txt
+
+# Cloned upstream playbook (huge; users clone it themselves)
+matrix-docker-ansible-deploy/
+
+# Python / editor noise
+__pycache__/
+*.pyc
+.venv/
+.idea/
+.vscode/
+.DS_Store

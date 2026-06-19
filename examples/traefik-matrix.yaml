@@ -1,0 +1,67 @@
+# ============================================================================
+#  External Traefik (the TLS-terminating one, e.g. on 192.168.1.105) — DYNAMIC config.
+#  Drop this in your Traefik `dynamic/` directory (file provider) and adjust:
+#    - example.com            -> your domain
+#    - LXC_IP                 -> the LXC running this Matrix stack (e.g. 192.168.1.106)
+#    - certResolver name      -> whatever your static traefik.yaml calls your CF DNS-01 resolver
+#
+#  Why one backend for everything:
+#    The internal (playbook-managed) Traefik listens plain-HTTP on LXC_IP:81 and does
+#    all the per-service routing itself (Synapse, Element, Admin, MAS, Element Call, ntfy,
+#    well-known, federation-on-443...). So the external Traefik only needs Host-based
+#    routers that forward to http://LXC_IP:81 — no path rules, no rewrites.
+#
+#  ⚠️  Do NOT attach custom headers/auth/compression middleware to these routers.
+#      Element Call / LiveKit and the MAS OAuth flow break behind header-mangling
+#      middleware. Keep it a dumb pass-through.
+# ============================================================================
+
+http:
+  routers:
+    matrix-federation-and-client:
+      rule: "Host(`matrix.example.com`)"
+      entryPoints: ["websecure"]
+      service: matrix-internal
+      tls:
+        certResolver: cloudflare       # <- your resolver name
+        domains:
+          - main: "example.com"
+            sans: ["*.example.com"]
+
+    matrix-elementweb:
+      rule: "Host(`elementweb.example.com`)"
+      entryPoints: ["websecure"]
+      service: matrix-internal
+      tls: {certResolver: cloudflare}
+
+    matrix-admin:
+      rule: "Host(`admin.example.com`)"
+      entryPoints: ["websecure"]
+      service: matrix-internal
+      tls: {certResolver: cloudflare}
+
+    matrix-elementcall:
+      rule: "Host(`elementcall.example.com`)"
+      entryPoints: ["websecure"]
+      service: matrix-internal
+      tls: {certResolver: cloudflare}
+
+    matrix-push:
+      rule: "Host(`push.example.com`)"
+      entryPoints: ["websecure"]
+      service: matrix-internal
+      tls: {certResolver: cloudflare}
+
+    # Apex carries the .well-known delegation (client + server) so user-ids are @you:example.com
+    matrix-apex-wellknown:
+      rule: "Host(`example.com`)"
+      entryPoints: ["websecure"]
+      service: matrix-internal
+      tls: {certResolver: cloudflare}
+
+  services:
+    matrix-internal:
+      loadBalancer:
+        servers:
+          - url: "http://LXC_IP:81"
+        passHostHeader: true           # the internal Traefik routes by Host — keep it

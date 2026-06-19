@@ -1,0 +1,6 @@
+# Deploy target is Linux — keep LF so shell scripts and YAML aren't broken by CRLF.
+* text=auto eol=lf
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf

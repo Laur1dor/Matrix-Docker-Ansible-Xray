@@ -1,0 +1,295 @@
+---
+# ============================================================================
+#  SAMPLE inventory vars — COPY to inventory/host_vars/<your-domain>/vars.yml
+#  and fill every CHANGEME_* / placeholder value.
+#
+#  ⚠️  NEVER commit your real vars.yml — it holds passwords, API keys and tokens.
+#      The repo's .gitignore already blocks it. Generate secrets with:
+#         openssl rand -hex 32      (keys / encryption secrets)
+#         openssl rand -hex 20      (db passwords)
+#      Use a password manager for human/bot login passwords.
+# ============================================================================
+# ==========================================================================
+# Matrix @ example.com  |  LXC 192.168.1.106  |  fronted by Traefik @ .105
+# Phase 1 — base working install (no xray; calls via Element Call/LiveKit)
+# ==========================================================================
+
+# Acknowledge playbook version automatically (fresh install — nothing to migrate)
+matrix_playbook_migration_validated_version: "{{ matrix_playbook_migration_expected_version }}"
+
+# ---------- Identity / domains ----------
+matrix_domain: example.com
+matrix_server_fqn_matrix: matrix.example.com
+matrix_server_fqn_element: elementweb.example.com
+matrix_homeserver_implementation: synapse
+
+# user-id = @user:example.com  -> needs well-known delegation on the apex
+matrix_well_known_matrix_client_enabled: true
+matrix_static_files_file_matrix_server_enabled: true
+matrix_static_files_container_labels_base_domain_enabled: true
+
+# ---------- Reverse proxy: front the internal Traefik with the external one (.105) ----------
+matrix_playbook_reverse_proxy_type: playbook-managed-traefik
+matrix_playbook_ssl_enabled: true
+# internal Traefik does NO TLS/ACME; it serves plain HTTP on :81 (TLS terminates on .105)
+traefik_config_entrypoint_web_secure_enabled: false
+traefik_container_web_host_bind_port: '0.0.0.0:81'
+# trust X-Forwarded-* headers only from the external Traefik on .105
+traefik_config_entrypoint_web_forwardedHeaders_trustedIPs: ['TRAEFIK_LAN_IP/32']
+# no internal dashboard (the .105 Traefik already has one)
+traefik_dashboard_enabled: false
+
+# ---------- Federation over 443 via well-known (no public 8448) ----------
+matrix_synapse_http_listener_resource_names: ["client", "federation"]
+matrix_federation_public_port: 443
+matrix_synapse_federation_port_enabled: false
+matrix_synapse_tls_federation_listener_enabled: false
+
+# ---------- Start-up timeouts (first boot is slow on 2 vCPU) ----------
+devture_systemd_service_manager_up_verification_delay_seconds: 900
+matrix_synapse_systemd_service_specific_options: |
+  TimeoutStartSec=900
+matrix_element_admin_systemd_service_specific_options: |
+  TimeoutStartSec=300
+  TimeoutStopSec=60
+
+# ---------- Synapse ----------
+matrix_homeserver_generic_secret_key: "CHANGEME_openssl_rand_hex_32"
+postgres_connection_password: "CHANGEME_openssl_rand_hex_32"
+matrix_synapse_max_upload_size_mb: 2048
+matrix_synapse_enable_registration: false
+# presence off — saves CPU under federation
+matrix_synapse_presence_enabled: false
+# don't let huge remote rooms hammer a small server
+matrix_synapse_limit_remote_rooms_enabled: true
+matrix_synapse_limit_remote_rooms_complexity: 100.0
+# media: local kept forever, remote cached 2 weeks
+matrix_synapse_media_retention_remote_media_lifetime: 2w
+# user search
+matrix_synapse_user_directory_search_all_users: true
+matrix_synapse_user_directory_prefer_local_users: true
+matrix_synapse_configuration_extension_yaml: |
+  ip_range_whitelist:
+    - "172.16.0.0/12"
+    - "10.0.0.0/8"
+    - "127.0.0.0/8"
+    - "192.168.0.0/16"
+  # Rooms abandoned by ALL members are purged ~1h after being forgotten (default was 28d).
+  # Fixes synapse-admin showing deleted rooms stuck on "Deletion in progress" for weeks.
+  forgotten_room_retention_period: 1h
+
+# ---------- MAS (Matrix Authentication Service) ----------
+matrix_authentication_service_enabled: true
+matrix_authentication_service_config_secrets_encryption: "CHANGEME_openssl_rand_hex_32"
+matrix_authentication_service_migration_in_progress: false
+matrix_authentication_service_config_account_password_registration_enabled: true
+# self-registration requires a token (admin issues tokens from the panel)
+matrix_authentication_service_config_account_registration_token_required: true
+matrix_authentication_service_config_account_password_change_allowed: true
+matrix_authentication_service_config_account_login_with_email_allowed: false
+
+# ---------- Clients & admin ----------
+matrix_client_element_enabled: true
+matrix_client_element_default_country_code: "RU"
+matrix_element_admin_enabled: true
+matrix_element_admin_hostname: admin.example.com
+matrix_ketesa_enabled: true
+
+# ---------- ntfy (push notifications) ----------
+ntfy_enabled: true
+ntfy_hostname: push.example.com
+
+# ---------- Calls: Element Call + LiveKit (both 1-1 and group). coturn OFF. ----------
+coturn_enabled: true
+matrix_rtc_enabled: true
+matrix_element_call_enabled: true
+matrix_element_call_hostname: elementcall.example.com
+matrix_client_element_jitsi_preferred: false
+# advertise the public IP for media (deterministic; phase-3 watcher keeps it in sync)
+livekit_server_config_rtc_use_external_ip: false
+livekit_server_config_rtc_node_ip: "YOUR_PUBLIC_IP"
+
+# --- post-install fixes (2026-06-19) ---
+matrix_synapse_default_room_version: "11"
+matrix_authentication_service_config_account_password_registration_email_required: false
+
+# --- coturn re-enabled 2026-06-19 (plain TURN only; internal Traefik has no TLS certs) ---
+coturn_hostname: matrix.example.com
+coturn_turn_external_ip_address: "YOUR_PUBLIC_IP"
+coturn_turn_static_auth_secret: "CHANGEME_openssl_rand_hex_32"
+
+# --- common room auto-join (new users) + nicer apex landing (2026-06-19) ---
+matrix_static_files_file_index_html_enabled: true
+matrix_static_files_file_index_html_template: |
+  <!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1"><title>example.com</title>
+  <style>
+  :root{color-scheme:dark}*{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% -10%,#1b2a4a,#0a0e17 60%);color:#e6edf3}
+  .card{text-align:center;padding:48px 32px;max-width:560px}
+  .logo{font-size:56px}
+  h1{font-size:34px;letter-spacing:-.5px;margin-top:8px}.dim{color:#4f8cff}
+  p{color:#9aa7b5;margin-top:14px;font-size:16px;line-height:1.6}
+  .btns{margin-top:32px;display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+  a.btn{text-decoration:none;padding:13px 26px;border-radius:12px;font-weight:600;font-size:15px;transition:.15s}
+  a.primary{background:#4f8cff;color:#fff}a.primary:hover{background:#3a78f0}
+  a.ghost{background:#ffffff14;color:#e6edf3;border:1px solid #ffffff22}a.ghost:hover{background:#ffffff22}
+  .foot{margin-top:40px;font-size:13px;color:#5b6675}
+  </style></head><body>
+  <div class="card">
+  <div class="logo">&#127770;</div>
+  <h1>void<span class="dim">&#183;</span>shell</h1>
+  <p>Private Matrix messenger.<br>Messages, calls and video for your circle only.</p>
+  <div class="btns">
+  <a class="btn primary" href="https://elementweb.example.com">Open chat</a>
+  <a class="btn ghost" href="https://elementcall.example.com">Video call</a>
+  </div>
+  <div class="foot">Powered by Matrix &middot; Synapse</div>
+  </div></body></html>
+
+# guest accounts -> unregistered people can join Element Call via a shared link (guest conferences)
+matrix_synapse_allow_guest_access: true
+
+# DB maintenance: compress Synapse state-groups (shrinks DB over time) + automated consistent Postgres dumps (PBS then captures them)
+matrix_synapse_auto_compressor_enabled: true
+postgres_backup_enabled: true
+
+# ===== baibot — AI assistant (Groq), routed through xray (Finland; Groq geo-blocks RU IPs) =====
+matrix_bot_baibot_enabled: true
+matrix_admin: "@admin:example.com"
+matrix_bot_baibot_config_user_password: "CHANGEME_strong_password"
+matrix_bot_baibot_config_user_encryption_recovery_passphrase: "CHANGEME_openssl_rand_hex_24"
+matrix_bot_baibot_config_persistence_session_encryption_key: "CHANGEME_openssl_rand_hex_32"
+matrix_bot_baibot_config_persistence_config_encryption_key: "CHANGEME_openssl_rand_hex_32"
+matrix_bot_baibot_config_agents_static_definitions_groq_enabled: true
+matrix_bot_baibot_config_agents_static_definitions_groq_config_api_key: "CHANGEME_your_groq_api_key"
+matrix_bot_baibot_config_agents_static_definitions_groq_config_text_generation_model_id: "llama-3.3-70b-versatile"
+matrix_bot_baibot_config_agents_static_definitions_prompt: "You are a helpful, friendly assistant in a private family Matrix chat. Be concise and polite. Refuse illegal, harmful, hateful or sexual requests."
+matrix_bot_baibot_config_initial_global_config_handler_catch_all: static/openrouter-gemma
+matrix_bot_baibot_container_extra_arguments:
+  - "--env"
+  - "HTTPS_PROXY=http://172.17.0.1:10809"
+  - "--env"
+  - "HTTP_PROXY=http://172.17.0.1:10809"
+  - "--env"
+  - "https_proxy=http://172.17.0.1:10809"
+  - "--env"
+  - "http_proxy=http://172.17.0.1:10809"
+  - "--env"
+  - "NO_PROXY=localhost,127.0.0.1,::1,example.com,.example.com,matrix-synapse,matrix-authentication-service,matrix-traefik,matrix-postgres,172.16.0.0/12,10.0.0.0/8,192.168.0.0/16"
+  - "--env"
+  - "no_proxy=localhost,127.0.0.1,::1,example.com,.example.com,matrix-synapse,matrix-authentication-service,matrix-traefik,matrix-postgres,172.16.0.0/12,10.0.0.0/8,192.168.0.0/16"
+
+# ===== Bridges — Batch A (direct, no proxy): Discord, Instagram, Android-SMS =====
+# Self-onboarding: each user DMs the bridge bot and logs into their own account.
+matrix_mautrix_discord_enabled: true
+matrix_mautrix_meta_instagram_enabled: true
+matrix_mautrix_gmessages_enabled: true
+
+# ===== Bridges — Batch B (via xray/Finland): Signal, WhatsApp =====
+matrix_mautrix_whatsapp_enabled: true
+matrix_mautrix_whatsapp_configuration_extension_yaml: |
+  network:
+    proxy: "socks5://172.17.0.1:10808"
+
+matrix_mautrix_signal_enabled: true
+matrix_mautrix_signal_container_extra_arguments:
+  - "--env"
+  - "HTTPS_PROXY=socks5://172.17.0.1:10808"
+  - "--env"
+  - "HTTP_PROXY=socks5://172.17.0.1:10808"
+  - "--env"
+  - "https_proxy=socks5://172.17.0.1:10808"
+  - "--env"
+  - "http_proxy=socks5://172.17.0.1:10808"
+  - "--env"
+  - "NO_PROXY=localhost,127.0.0.1,::1,example.com,.example.com,matrix-synapse,matrix-authentication-service,matrix-traefik,matrix-postgres,172.16.0.0/12,10.0.0.0/8,192.168.0.0/16"
+  - "--env"
+  - "no_proxy=localhost,127.0.0.1,::1,example.com,.example.com,matrix-synapse,matrix-authentication-service,matrix-traefik,matrix-postgres,172.16.0.0/12,10.0.0.0/8,192.168.0.0/16"
+
+# ===== Bots: maubot, reminder-bot, registration-bot, Honoroit =====
+matrix_bot_maubot_enabled: true
+matrix_bot_maubot_initial_password: "CHANGEME_strong_password"
+matrix_bot_maubot_database_password: "CHANGEME_openssl_rand_hex_20"
+matrix_bot_matrix_reminder_bot_enabled: true
+matrix_bot_matrix_reminder_bot_database_password: "CHANGEME_openssl_rand_hex_20"
+matrix_bot_matrix_reminder_bot_matrix_user_password: "CHANGEME_strong_password"
+matrix_bot_matrix_registration_bot_enabled: true
+matrix_bot_matrix_registration_bot_bot_password: "CHANGEME_strong_password"
+matrix_bot_honoroit_enabled: true
+matrix_bot_honoroit_database_password: "CHANGEME_openssl_rand_hex_20"
+matrix_bot_honoroit_password: "CHANGEME_strong_password"
+# Backoffice room (pre-created by admin). Invite @honoroit:example.com to it after deploy.
+matrix_bot_honoroit_roomid: "!CHANGEME_create_a_room_and_paste_its_id:example.com"
+matrix_bot_matrix_reminder_bot_reminders_timezone: "Europe/Moscow"
+
+# maubot web-UI admin (manage plugins): login "admin"
+matrix_bot_maubot_admins:
+  admin: "CHANGEME_maubot_web_password"
+
+# ===== Telegram bridge (MTProto via xray socks -> Finland) =====
+matrix_mautrix_telegram_enabled: true
+matrix_mautrix_telegram_api_id: "0000000"
+matrix_mautrix_telegram_api_hash: "CHANGEME_telegram_api_hash"
+matrix_mautrix_telegram_configuration_extension_yaml: |
+  telegram:
+    proxy:
+      type: socks5
+      address: "172.17.0.1:10808"
+
+# OpenRouter agent — free, vision-capable (Gemma 4), reachable from RU directly (no proxy)
+matrix_bot_baibot_config_agents_static_definitions_custom:
+  - id: openrouter-gemma
+    provider: openai
+    config:
+      base_url: https://openrouter.ai/api/v1
+      api_key: "CHANGEME_your_openrouter_api_key"
+      text_generation:
+        model_id: "google/gemma-4-31b-it:free"
+        prompt: "Ты дружелюбный ассистент в приватном семейном Matrix-чате example.com. По умолчанию отвечай на русском. Ты умеешь анализировать присланные изображения и описывать что на них. Если вопрос про сам сервер, аккаунт, доступ, регистрацию или нужна помощь администратора — вежливо направь пользователя к админу: @admin:example.com. Отказывай в незаконных, вредоносных, оскорбительных и сексуальных запросах. Сменить язык можно просто попросив (например: reply in English)."
+        temperature: 1.0
+        max_response_tokens: 2048
+        max_context_tokens: 32000
+      speech_to_text: null
+      text_to_speech: null
+      image_generation: null
+
+# ===== Bridge access: ONLY local example.com users can link accounts; remote homeservers get NO bridge access =====
+matrix_mautrix_telegram_bridge_permissions:
+  "@admin:example.com": admin
+  example.com: user
+matrix_mautrix_whatsapp_bridge_permissions:
+  "@admin:example.com": admin
+  example.com: user
+matrix_mautrix_signal_bridge_permissions:
+  "@admin:example.com": admin
+  example.com: user
+matrix_mautrix_discord_bridge_permissions:
+  "@admin:example.com": admin
+  example.com: user
+matrix_mautrix_meta_instagram_bridge_permissions:
+  "@admin:example.com": admin
+  example.com: user
+matrix_mautrix_gmessages_bridge_permissions:
+  "@admin:example.com": admin
+  example.com: user
+
+# new users auto-join the announcements/welcome room
+matrix_synapse_auto_join_rooms:
+  - "#announcements:example.com"
+
+# ===== Batch C (2026-06-19): Draupnir moderation, guest-call cap =====
+
+# Draupnir — moderation/safety bot. Zero-touch: it creates its own management room
+# and invites the initial manager (@admin). Admin issues ban/policy commands there.
+matrix_bot_draupnir_enabled: true
+matrix_bot_draupnir_zero_touch_deploy: true
+matrix_bot_draupnir_config_initialManager: "@admin:example.com"
+matrix_bot_draupnir_login_native: true
+matrix_bot_draupnir_password: "CHANGEME_strong_password"
+
+# Cap every LiveKit/Element Call room at 10 participants (guest conferences + family calls).
+# Protects a 2-vCPU box and limits abuse of shareable guest links.
+livekit_server_configuration_extension_yaml: |
+  room:
+    max_participants: 10
