@@ -158,6 +158,8 @@ postgres_backup_enabled: true
 matrix_bot_baibot_enabled: true
 matrix_admin: "@admin:example.com"
 matrix_bot_baibot_config_user_password: "CHANGEME_strong_password"
+# Bot display name (so users can find it in search as "Помощник")
+matrix_bot_baibot_config_user_name: "Помощник"
 matrix_bot_baibot_config_user_encryption_recovery_passphrase: "CHANGEME_openssl_rand_hex_24"
 matrix_bot_baibot_config_persistence_session_encryption_key: "CHANGEME_openssl_rand_hex_32"
 matrix_bot_baibot_config_persistence_config_encryption_key: "CHANGEME_openssl_rand_hex_32"
@@ -185,6 +187,8 @@ matrix_bot_baibot_container_extra_arguments:
 # otherwise the bot replies "this bridge was not configured to support encryption".
 matrix_bridges_encryption_enabled: true
 matrix_bridges_encryption_default: true
+# New private rooms & DMs are created ENCRYPTED automatically (no manual "enable encryption" + confirm).
+matrix_synapse_encryption_enabled_by_default_for_room_type: invite
 
 # ===== Bridges — Batch A (direct, no proxy): Discord, Instagram, Android-SMS =====
 # Self-onboarding: each user DMs the bridge bot and logs into their own account.
@@ -227,6 +231,8 @@ matrix_bot_honoroit_database_password: "CHANGEME_openssl_rand_hex_20"
 matrix_bot_honoroit_password: "CHANGEME_strong_password"
 # Backoffice room (pre-created by admin). Invite @honoroit:example.com to it after deploy.
 matrix_bot_honoroit_roomid: "!CHANGEME_create_a_room_and_paste_its_id:example.com"
+# Don't scare users with the "encrypted room" warning (honoroit handles E2EE rooms).
+matrix_bot_honoroit_no_encryption_warning: true
 matrix_bot_matrix_reminder_bot_reminders_timezone: "Europe/Moscow"
 
 # maubot web-UI admin (manage plugins): login "admin"
@@ -252,7 +258,7 @@ matrix_bot_baibot_config_agents_static_definitions_custom:
       api_key: "CHANGEME_your_openrouter_api_key"
       text_generation:
         model_id: "google/gemma-4-31b-it:free"
-        prompt: "Ты дружелюбный ассистент в приватном семейном Matrix-чате example.com. По умолчанию отвечай на русском. Ты умеешь анализировать присланные изображения и описывать что на них. Если вопрос про сам сервер, аккаунт, доступ, регистрацию или нужна помощь администратора — вежливо направь пользователя к админу: @admin:example.com. Отказывай в незаконных, вредоносных, оскорбительных и сексуальных запросах. Сменить язык можно просто попросив (например: reply in English)."
+        prompt: "Ты — дружелюбный помощник-консультант приватного Matrix-сервера example.com. По умолчанию отвечай на русском (попросят другой язык — переходи, например reply in English). Будь тёплым и кратким, обращайся на ты. Ты умеешь анализировать присланные изображения. Тебе пишут обычные пользователи — помогай разобраться с сервером и его возможностями. ЧТО УМЕЕТ СЕРВЕР (рассказывай при вопросах): Звонки и видео — кнопка звонка в любой комнате (Element Call), до 10 человек, есть демонстрация экрана и гости по ссылке. Переводчик — позови @bot.maubot:example.com в комнату и пиши команду !tr en текст (любой язык вместо en). Напоминания — напиши @bot.matrix-reminder-bot:example.com команду: !remindme 2h; текст. Подключить свой мессенджер (мосты) — напиши боту @telegrambot / @whatsappbot / @signalbot / @discordbot / @instagrambot / @gmessagesbot (все :example.com) команду login и следуй подсказкам; нюансы: Discord — вход по токену (login-token, не пароль), WhatsApp — login qr, Instagram — вход по cookie из браузера. Поиск людей — через поиск по имени вверху Element. Комнаты сгруппированы в пространства Семья и Друзья. Личные переписки шифруются автоматически — это нормально. Если вопрос про аккаунт, доступ, регистрацию, пароль, технические сбои или нужен живой человек — вежливо направь к администратору @admin:example.com (либо к боту поддержки @honoroit:example.com). Не выдумывай возможности, которых нет. Отказывай в незаконных, вредоносных, оскорбительных и сексуальных запросах."
         temperature: 1.0
         max_response_tokens: 2048
         max_context_tokens: 32000

@@ -72,14 +72,14 @@
 
 Напишите нужному боту в личку команду — он пришлёт инструкцию:
 
-| Сервис | Бот | Как привязать (кратко) |
+| Сервис | Бот | Как привязать (команду писать точно как указано) |
 |---|---|---|
 | **Telegram** | `@telegrambot:example.com` | `login` → ввести номер телефона и код из Telegram |
-| **WhatsApp** | `@whatsappbot:example.com` | `login` → отсканировать QR в WhatsApp → «Связанные устройства» |
-| **Signal** | `@signalbot:example.com` | `login` → отсканировать QR в Signal → «Связанные устройства» |
-| **Discord** | `@discordbot:example.com` | `login qr` (или по токену) |
-| **Instagram** | `@instagrambot:example.com` | `login` → логин/пароль Instagram |
-| **Android-SMS** | `@gmessagesbot:example.com` | `login` → связать с Google Messages (QR), нужен Android-телефон онлайн |
+| **WhatsApp** | `@whatsappbot:example.com` | `login qr` (двумя словами!) → WhatsApp → «Связанные устройства» → сканировать QR |
+| **Signal** | `@signalbot:example.com` | `login` → появится QR → Signal → «Связанные устройства» → сканировать |
+| **Discord** | `@discordbot:example.com` | `login-qr` → Discord → «Настройки → Сканировать QR». Пароль НЕ работает (капча). Не вышло — `login-token` |
+| **Instagram** | `@instagrambot:example.com` | вход по cookie из браузера (с телефона почти нереально, проще с компьютера) |
+| **Android-SMS** | `@gmessagesbot:example.com` | `login qr` → связать с Google Messages (QR), нужен Android-телефон онлайн |
 
 После привязки ваши диалоги из мессенджера появятся в Element. Чтобы отвязать — команда `logout`.
 Сообщения и звонки/инвайты вам **от пользователей с других Matrix-серверов** приходят как обычно —
