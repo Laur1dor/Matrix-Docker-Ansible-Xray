@@ -1,0 +1,9 @@
+maubot: 0.1.0
+id: com.voidshell.giphy
+version: 1.0.0
+license: MIT
+modules:
+- giphy
+main_class: GiphyBot
+extra_files:
+- base-config.yaml
