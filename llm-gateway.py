@@ -75,7 +75,7 @@ def try_all(body, cands):
         payload["model"] = model
         cmd = ["curl", "-s", "-m", "45", "-w", "\n%{http_code}", "-X", "POST", url,
                "-H", "Authorization: Bearer " + key, "-H", "Content-Type: application/json",
-               "-H", "HTTP-Referer: https://void-shell.com", "-H", "X-Title: void-shell",
+               "-H", "HTTP-Referer: https://example.com", "-H", "X-Title: matrix-baibot",
                "--data-binary", "@-"]
         if opener is proxied:
             cmd[1:1] = ["-x", XRAY]   # tunnel Groq through xray (-> Finland)
