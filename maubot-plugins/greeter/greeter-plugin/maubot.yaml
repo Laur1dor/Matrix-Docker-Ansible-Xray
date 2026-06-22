@@ -1,0 +1,9 @@
+maubot: 0.1.0
+id: com.voidshell.greeter
+version: 1.0.2
+license: MIT
+modules:
+- greeter
+main_class: GreeterBot
+extra_files:
+- base-config.yaml

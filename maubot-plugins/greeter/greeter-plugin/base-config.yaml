@@ -1,0 +1,25 @@
+announce_room: "!BpsEKXlKwYzKPmEFKH:void-shell.com"
+homeserver_suffix: ":void-shell.com"
+skip_users:
+- "@baibot:void-shell.com"
+- "@bot.maubot:void-shell.com"
+- "@bot.draupnir:void-shell.com"
+- "@honoroit:void-shell.com"
+- "@bot.matrix-reminder-bot:void-shell.com"
+- "@bot.matrix-registration-bot:void-shell.com"
+welcome_html: |
+  <h3>👋 Добро пожаловать на void-shell!</h3>
+  <p>Приватный мессенджер для своих. Вот что тут есть:</p>
+  <ul>
+  <li>💬 <b>Общение и поиск людей</b> — ищи по имени в строке поиска Element.</li>
+  <li>📞 <b>Звонки и видео</b> — кнопка звонка в любой комнате (до 10 человек, есть демонстрация экрана).</li>
+  <li>🤖 <b>Помощник (ИИ)</b> — <a href="https://matrix.to/#/@baibot:void-shell.com">@baibot</a>: ответит на любой вопрос, понимает присланные фото.</li>
+  <li>🌐 <b>Перевод и гифки</b> — позови <a href="https://matrix.to/#/@bot.maubot:void-shell.com">Маубота</a> в комнату: <code>!tr en текст</code> — перевод, <code>!giphy кот</code> — гифка. Или поставь на сообщение реакцию-флаг 🇬🇧/🇷🇺/🇩🇪 → получишь перевод; либо 🌐 → бот спросит язык.</li>
+  <li>⏰ <b>Напоминания</b> — <a href="https://matrix.to/#/@bot.matrix-reminder-bot:void-shell.com">бот напоминаний</a>: <code>!remindme 2h; купить хлеб</code>.</li>
+  <li>🔗 <b>Подключить свой мессенджер</b> (Telegram, WhatsApp, Discord и др.) — напиши боту нужного сервиса команду <code>login</code>.</li>
+  <li>🆘 <b>Нужна помощь?</b> — напиши <a href="https://matrix.to/#/@honoroit:void-shell.com">Поддержке</a> или администратору <a href="https://matrix.to/#/@admin:void-shell.com">@admin</a>.</li>
+  </ul>
+  <p>📢 Новости и объявления — в комнате <a href="https://matrix.to/#/#announcements:void-shell.com">«Объявления»</a> (ты в ней уже состоишь).</p>
+  <p>Приятного общения! 🌙</p>
+welcome_plain: |
+  Добро пожаловать на void-shell! Поиск людей — по имени в Element. Звонки/видео — кнопка в комнате. Помощник (ИИ): @baibot. Перевод и гифки: @bot.maubot (!tr en текст, !giphy кот, или реакция-флаг 🇬🇧). Напоминания: @bot.matrix-reminder-bot. Мосты: напиши боту login. Помощь: @honoroit или @admin. Объявления — в комнате «Объявления».
