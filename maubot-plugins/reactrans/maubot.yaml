@@ -1,0 +1,9 @@
+maubot: 0.1.0
+id: com.voidshell.reactrans
+version: 1.0.0
+license: MIT
+modules:
+- reactrans
+main_class: ReactTransBot
+extra_files:
+- base-config.yaml
