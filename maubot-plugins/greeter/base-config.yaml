@@ -1,22 +1,25 @@
-announce_room: "!BpsEKXlKwYzKPmEFKH:void-shell.com"
-homeserver_suffix: ":void-shell.com"
+announce_room: "!CHANGEME_ANNOUNCE_ROOM:example.com"
+homeserver_suffix: ":example.com"
 skip_users:
-- "@baibot:void-shell.com"
-- "@bot.maubot:void-shell.com"
-- "@bot.draupnir:void-shell.com"
-- "@honoroit:void-shell.com"
-- "@bot.matrix-reminder-bot:void-shell.com"
-- "@bot.matrix-registration-bot:void-shell.com"
+- "@baibot:example.com"
+- "@bot.maubot:example.com"
+- "@bot.draupnir:example.com"
+- "@honoroit:example.com"
+- "@bot.matrix-reminder-bot:example.com"
+- "@bot.matrix-registration-bot:example.com"
 welcome_html: |
-  <h4>👋 Привет и добро пожаловать на void-shell!</h4>
-  <p>Это приватный мессенджер для своих. Если коротко, тут можно:</p>
+  <h3>👋 Добро пожаловать!</h3>
+  <p>Приватный мессенджер для своих. Вот что тут есть:</p>
   <ul>
-  <li>💬 Общаться и искать людей по имени (поиск вверху Element).</li>
-  <li>📞 Звонить и видео — кнопка звонка в комнате (до 10 человек, есть демонстрация экрана).</li>
-  <li>🤖 Спрашивать <b>Помощника</b> — <a href="https://matrix.to/#/@baibot:void-shell.com">@baibot</a> (ИИ: ответит на любой вопрос, понимает фото).</li>
-  <li>🌐 Переводить и гифки — позови <a href="https://matrix.to/#/@bot.maubot:void-shell.com">@bot.maubot</a>: <code>!tr en текст</code> или <code>!giphy кот</code>.</li>
-  <li>🔗 Подключить свой Telegram/WhatsApp/Discord/и т.д. — напиши боту моста команду <code>login</code>.</li>
+  <li>💬 <b>Общение и поиск людей</b> — ищи по имени в строке поиска Element.</li>
+  <li>📞 <b>Звонки и видео</b> — кнопка звонка в любой комнате (до 10 человек, есть демонстрация экрана).</li>
+  <li>🤖 <b>Помощник (ИИ)</b> — <a href="https://matrix.to/#/@baibot:example.com">@baibot</a>: ответит на любой вопрос, понимает присланные фото.</li>
+  <li>🌐 <b>Перевод и гифки</b> — позови <a href="https://matrix.to/#/@bot.maubot:example.com">Маубота</a> в комнату: <code>!tr en текст</code> — перевод, <code>!giphy кот</code> — гифка. Или поставь на сообщение реакцию-флаг 🇬🇧/🇷🇺/🇩🇪 → получишь перевод; либо 🌐 → бот спросит язык.</li>
+  <li>⏰ <b>Напоминания</b> — <a href="https://matrix.to/#/@bot.matrix-reminder-bot:example.com">бот напоминаний</a>: <code>!remindme 2h; купить хлеб</code>.</li>
+  <li>🔗 <b>Подключить свой мессенджер</b> (Telegram, WhatsApp, Discord и др.) — напиши боту нужного сервиса команду <code>login</code>.</li>
+  <li>🆘 <b>Нужна помощь?</b> — напиши <a href="https://matrix.to/#/@honoroit:example.com">Поддержке</a> или администратору <a href="https://matrix.to/#/@admin:example.com">@admin</a>.</li>
   </ul>
-  <p>Любые вопросы — пиши Помощнику <a href="https://matrix.to/#/@baibot:void-shell.com">@baibot</a> или админу <a href="https://matrix.to/#/@admin:void-shell.com">@admin</a>. Приятного общения! 🌙</p>
+  <p>📢 Новости и объявления — в комнате <a href="https://matrix.to/#/#announcements:example.com">«Объявления»</a> (ты в ней уже состоишь).</p>
+  <p>Приятного общения! 🌙</p>
 welcome_plain: |
-  Добро пожаловать на void-shell! Помощник (ИИ): @baibot — ответит на любой вопрос, понимает фото. Переводчик/гифки: @bot.maubot (!tr en текст, !giphy кот). Звонки — кнопка в комнате. Мосты — напиши боту login. Вопросы — @baibot или @admin.
+  Добро пожаловать! Поиск людей — по имени в Element. Звонки/видео — кнопка в комнате. Помощник (ИИ): @baibot. Перевод и гифки: @bot.maubot (!tr en текст, !giphy кот, или реакция-флаг 🇬🇧). Напоминания: @bot.matrix-reminder-bot. Мосты: напиши боту login. Помощь: @honoroit или @admin. Объявления — в комнате «Объявления».

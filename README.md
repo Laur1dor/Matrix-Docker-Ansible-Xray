@@ -1,122 +1,153 @@
 # Matrix-Docker-Ansible-Xray
 
-Self-hosted **Matrix (Synapse)** на основе [spantaleev/matrix-docker-ansible-deploy](https://github.com/spantaleev/matrix-docker-ansible-deploy), адаптированный под типовой **домашний Proxmox-стенд**: сервис живёт в LXC, наружу торчит **только роутер (главный фаервол)**, TLS терминирует **внешний Traefik** на отдельной машине, а исходящий трафик при блокировках идёт через **Xray (VLESS/REALITY)** с хот-свапом и фейловером.
+Готовый, «семейный/командный» **Matrix-мессенджер** на базе
+[spantaleev/matrix-docker-ansible-deploy](https://github.com/spantaleev/matrix-docker-ansible-deploy) — но с уже
+собранным и проверенным набором: **звонки/видео, гости-конференции, AI-ассистент с распознаванием фото, переводчик,
+гифки, напоминания, модерация, хелпдеск, приветствие новичков, 6 мессенджер-мостов** и **опциональный обход блокировок
+через Xray (VLESS/REALITY)**.
 
-Сверху — полный «бытовой» набор: **мессенджер + звонки/видео, гости-конференции, AI-ассистент с распознаванием фото, переводчик, напоминания, модерация, хелпдеск и 6 мостов** (Telegram/WhatsApp/Discord/Signal/Instagram/SMS) с самостоятельным подключением.
+Подходит и для **одного VPS**, и для **домашнего Proxmox/сервера**, и для установки **за вашим существующим
+reverse-proxy** (Traefik / nginx / Nginx Proxy Manager) — на той же или на отдельной машине.
 
-> 🇷🇺 Это основной README (обзор и установка). 
-> 📖 **Что умеет и как пользоваться (простым языком):** [`docs/FUNCTIONALITY.ru.md`](docs/FUNCTIONALITY.ru.md)
-> 🇬🇧 English overview: [`README.en.md`](README.en.md)
-> Рассчитано на homelab/devops: без воды, но с объяснением «что/зачем/почему».
+> 🇷🇺 Это основной README. 🇬🇧 English: [`README.en.md`](README.en.md).
+> 📖 Что умеет и как пользоваться (простым языком): [`docs/FUNCTIONALITY.ru.md`](docs/FUNCTIONALITY.ru.md).
+> ⚠️ **Секреты в git не коммитим** — см. [Безопасность](#-безопасность). В репозитории только шаблоны с плейсхолдерами.
 
-> ⚠️ **Секреты в git не коммитим.** В репозитории — только [`examples/vars.sample.yml`](examples/vars.sample.yml) с плейсхолдерами. Реальный `vars.yml` (пароли, ключи, токены) заблокирован в [`.gitignore`](.gitignore). Подробнее — раздел [Безопасность](#безопасность).
+---
 
-## Что внутри
-**Ядро:** Synapse · MAS (новая авторизация, регистрация по токену) · Element Web · Element Admin (Ketesa/synapse-admin) · ntfy (push) · well-known делегация (user-id вида `@you:domain`).
-**Звонки:** Element Call + LiveKit (1-1, группы до 10, шара экрана, **гости по ссылке**) · coturn (легаси-TURN).
-**Боты:** **baibot** (AI, vision, RU по умолчанию, E2EE) · **maubot + переводчик** (`!tr`) · **reminder-bot** · **registration-bot** · **Draupnir** (модерация) · **Honoroit** (хелпдеск).
-**Мосты (самоподключение, только для своих):** Telegram · WhatsApp · Signal · Discord · Instagram · Android-SMS.
-**Инфраструктура:** **Xray-тулкит** (`xray-manage`, хот-свап без пересборки) · **livekit-ip-watcher** (авто-обновление белого IP) · автокомпрессия БД · логические бэкапы Postgres · быстрая очистка удалённых комнат.
+## ⚡ Что внутри
 
-## Архитектура
+**Ядро.** Synapse (homeserver) · MAS — современная авторизация, регистрация по токену-приглашению · Element Web ·
+Element Admin (Ketesa/synapse-admin) · ntfy (push-уведомления) · well-known-делегация (адреса вида `@you:example.com`).
 
-```
-                 Интернет
-                    │  (1 белый IP)
-            ┌───────▼────────┐
-            │  Роутер/OpenWRT │  фаервол + DPI-байпас (zapret)
-            │  port-forwards  │
-            └───┬────────┬────┘
-       80/443   │        │  LiveKit media: 7882/udp,7881/tcp,
-                │        │  3479/udp,5350/tcp,30000-30020/udp
-        ┌───────▼──┐  ┌──▼──────────────────────────────┐
-        │ .105     │  │ .106  LXC (Debian 12)            │
-        │ Traefik  │  │  внутр. Traefik :81 (без TLS)    │
-        │ (TLS,    │──┼─▶ Synapse/MAS/Element/Ketesa/... │
-        │  CF DNS) │  │  LiveKit · coturn · ntfy · боты  │
-        └──────────┘  │  мосты · Xray (selective egress) │
-                      └──────────────────────────────────┘
-```
+**Связь.** Element Call + LiveKit (1-на-1, группы, демонстрация экрана, **гости по ссылке без регистрации**, лимит
+участников) · coturn (TURN для пробития NAT) · автоматическое E2EE-шифрование личных чатов.
 
-- **Внешний Traefik (.105)** держит сертификаты (Cloudflare DNS-01, wildcard) и проксирует все matrix-хосты на **один** бэкенд `http://<LXC>:81` (Host-роутинг). Пример: [`examples/traefik-matrix.yaml`](examples/traefik-matrix.yaml).
-- **Внутренний Traefik (.106:81)** — «чёрный ящик» плейбука: TLS выключен, раскидывает по сервисам, разруливает «кражу роутов» MAS/Ketesa, федерацию и т.д.
-- **Федерация** — на 443 через well-known делегацию (порт 8448 наружу не нужен).
-- **Медиа звонков** идёт мимо .105 — напрямую port-forward'ом роутера на .106 (RTC нельзя проксировать через HTTP-reverse-proxy).
+**Боты.**
+- 🤖 **AI-ассистент** (baibot) — отвечает на любые вопросы, **понимает присланные фото**, по-русски; работает через
+  локальный **шлюз с пулом бесплатных моделей** (автопереключение при лимитах, см. [`llm-gateway.py`](llm-gateway.py)).
+- 🌐 **Переводчик + гифки** (maubot): команда `!tr`, `!giphy`, **перевод по реакции** (флаг-эмодзи или 🌐).
+- 👋 **Приветствие новичков** — личное приветственное сообщение каждому новому пользователю.
+- ⏰ **Напоминания**, 🛡 **Модерация** (Draupnir), 🆘 **Хелпдеск** (Honoroit).
 
-## Топология (пример)
-| Хост | Роль |
+**Мосты** (самоподключение, только для локальных пользователей): Telegram · WhatsApp · Signal · Discord · Instagram · Android-SMS.
+
+**Инфраструктура.** Опциональный **Xray-тулкит** (`xray-manage` — хот-свап VLESS без пересборки) · автокомпрессия БД ·
+бэкапы Postgres · быстрая очистка удалённых комнат · **еженедельная проверка обновлений с AI-оценкой рисков**
+([`check-updates.py`](check-updates.py)).
+
+---
+
+## 📋 Требования
+
+**Сервер:** Debian 12 (или Ubuntu), **≥ 6 ГБ RAM** (4 ГБ — впритык), **2+ ядра**, ~25 ГБ диска под старт (медиа растёт).
+Нужен Docker; если это LXC на Proxmox — включите **nesting=1**. Один публичный IP.
+
+**Домен:** один домен (например `example.com`) + поддомены. По умолчанию используются:
+
+| Поддомен | Назначение |
 |---|---|
-| Роутер (OpenWRT) | Единственный белый IP, port-forwards, DPI-байпас (zapret) |
-| `.105` | Внешний Traefik (docker-compose), TLS, Cloudflare DNS-challenge |
-| `.106` | LXC с Matrix-стеком (этот репо) |
+| `matrix.` | сам homeserver + федерация |
+| `element.` *(или любой)* | веб-клиент Element |
+| `admin.` | админ-панель |
+| `call.` | Element Call (звонки) |
+| `push.` | ntfy (уведомления) |
+| апекс `example.com` | well-known-делегация (чтобы адреса были `@you:example.com`) |
 
-## DNS (Cloudflare, DNS-only / grey cloud)
-Апекс `A` → белый IP; поддомены `CNAME` → апекс:
-`matrix`, `elementweb`, `admin`, `elementcall`, `push` (+ апекс для well-known).
-Wildcard-сертификат `*.domain` (+апекс) покрывает все поддомены — отдельные серты не нужны.
+Имена поддоменов — на ваш вкус (задаются в конфиге). **DNS:** апекс — `A`-запись на ваш IP; поддомены — `CNAME` на
+апекс (или `A` на тот же IP). Удобнее всего **wildcard-сертификат** `*.example.com` (+ апекс).
 
-## Порты наружу (на белый IP)
-| Порт | Proto | → | Зачем |
-|---|---|---|---|
-| 80, 443 | TCP | .105 | HTTP(S) (всё, включая федерацию на 443) |
-| 7882 | UDP | .106 | LiveKit ICE/UDP (основное медиа) |
-| 7881 | TCP | .106 | LiveKit ICE/TCP (фоллбэк) |
-| 3479 | UDP | .106 | TURN/UDP |
-| 5350 | TCP | .106 | TURN/TLS |
-| 30000-30020 | UDP | .106 | TURN relay range |
-| 3478, 49152-49172 | TCP/UDP | .106 | coturn (легаси-звонки) |
+**Порты наружу:** `80`, `443` (HTTP/HTTPS, в т.ч. федерация на 443). Для звонков (LiveKit/TURN) — UDP/TCP диапазоны
+(перечислены в [`docs/PORTS.md`](docs/PORTS.md) — или см. дефолты роли LiveKit). Если всё на одном сервере с публичным
+IP — порты просто открыты; если за NAT/роутером — пробросьте их.
 
-## Быстрый старт
-На .106 (Debian 12, ≥6 ГБ RAM, Docker-in-LXC требует `nesting=1`):
+---
 
-1. **Зависимости:** `git`, **`sudo`** (в минимальном Debian нет — обязателен для ansible `become`), Docker (`get.docker.com`), **Ansible через pipx** (репозиторный 2.14 слишком стар, нужен ≥2.15.1), `just`.
-2. `git clone` апстрим-плейбука → `just roles`.
-3. **Сгенерировать `vars.yml` под свой домен** (заполнит все случайные секреты автоматически):
+## 🏗 Варианты развёртывания
+
+Matrix-стек всегда крутится в Docker (его ставит плейбук). Разница — **что стоит спереди и терминирует TLS**:
+
+### Вариант A — один сервер / VPS (проще всего)
+Плейбук поднимает **собственный Traefik**, который сам берёт сертификаты Let's Encrypt. Ничего внешнего не нужно.
+В конфиге: `matrix_playbook_reverse_proxy_type: playbook-managed-traefik` (дефолт) + Let's Encrypt.
+
+### Вариант B — за вашим reverse-proxy (Traefik / nginx / Nginx Proxy Manager)
+Если у вас уже есть внешний прокси (на этой же или соседней машине), Matrix отдаёт всё по **обычному HTTP на один порт**,
+а TLS терминирует ваш прокси. В конфиге внутренний Traefik переводится в режим «без TLS» и слушает локальный порт; ваш
+прокси проксирует все matrix-хосты на `http://MATRIX_HOST:ПОРТ` по Host-заголовку. Примеры конфигов:
+[`examples/traefik-matrix.yaml`](examples/traefik-matrix.yaml) (Traefik), [`examples/nginx-matrix.conf`](examples/nginx-matrix.conf) (nginx/NPM).
+**Не вешайте** на эти маршруты middleware, меняющие заголовки — это ломает Element Call и OAuth.
+
+### Вариант C — домашний Proxmox / за роутером
+То же, что A или B, плюс на роутере пробрасываются 80/443 и медиа-порты звонков на сервер. LXC — с `nesting=1`.
+
+> Звонки (RTC-медиа) **нельзя** гонять через HTTP-reverse-proxy — их порты идут напрямую на сервер с Matrix.
+
+---
+
+## 🚀 Установка
+
+1. Поставьте на сервер зависимости: `git`, **`sudo`** (в минимальном Debian его нет — обязателен), Docker
+   (`curl -fsSL https://get.docker.com | sh`), **Ansible через pipx** (репозиторный часто слишком старый, нужен ≥ 2.15.1), `just`.
+2. Склонируйте апстрим-плейбук **spantaleev/matrix-docker-ansible-deploy** и выполните `just roles`.
+3. Склонируйте **этот** репозиторий рядом и запустите интерактивный скрипт — он спросит всё, что нужно, объяснит, где
+   что взять, сгенерирует случайные секреты и соберёт ваш `vars.yml`:
    ```bash
-   ./setup.sh --domain example.com --public-ip 1.2.3.4 --traefik-ip 192.168.1.105
+   ./setup.sh
    ```
-   Останется вписать только API-ключи (Groq/OpenRouter), Telegram `api_id/api_hash`, пароль веб-панели maubot и id комнаты Honoroit — скрипт перечислит их в конце.
-4. Скопировать готовый `vars.yml` в `inventory/host_vars/<domain>/vars.yml`, поднять `inventory/hosts` (local connection).
-5. `just install-all` → зарегистрировать админа (`just register-user admin <pass> yes`).
-6. На внешнем Traefik подложить [`examples/traefik-matrix.yaml`](examples/traefik-matrix.yaml).
+4. Скопируйте готовый `vars.yml` в `inventory/host_vars/<ваш-домен>/vars.yml` плейбука, поднимите `inventory/hosts`.
+5. `just install-all` → зарегистрируйте админа (`just register-user admin <пароль> yes`).
+6. (Вариант B) Настройте внешний прокси по примеру из [`examples/`](examples/) + добавьте DNS-записи/CNAME.
+7. (Опц.) Доустановите боты-плагины maubot и шлюз AI — см. [`docs/EXTRAS.md`](docs/EXTRAS.md).
 
-Ключевые переменные (фронт внешнего Traefik + федерация на 443):
-```yaml
-matrix_playbook_reverse_proxy_type: playbook-managed-traefik
-matrix_playbook_ssl_enabled: true
-traefik_config_entrypoint_web_secure_enabled: false        # TLS внутри off
-traefik_container_web_host_bind_port: '0.0.0.0:81'
-traefik_config_entrypoint_web_forwardedHeaders_trustedIPs: ['<TRAEFIK_IP>/32']
-matrix_synapse_http_listener_resource_names: ["client","federation"]
-matrix_federation_public_port: 443
-matrix_synapse_federation_port_enabled: false
-matrix_synapse_tls_federation_listener_enabled: false
-```
+Подробные настроенные значения с комментариями «что менять» — в [`examples/vars.sample.yml`](examples/vars.sample.yml).
 
-## Xray-тулкит (опциональный обход блокировок)
-`xray-manage` — хот-свап VLESS-апстрима без пересборки Matrix (Matrix завязан только на стабильный локальный порт прокси):
-```
-xray-manage sub '<url>'    # подписка (base64/plain)
-xray-manage link 'vless://...'
-xray-manage refresh | status | test | on | off
-```
-Конфиг генерится с **observatory + balancer** (авто-выбор живого сервера) и `fallbackTag: direct` (умерли все апстримы → выход напрямую, сервер остаётся в сети). Роутинг **селективный**: локалка/RU → direct, домены из `proxy-domains.txt` → через VLESS, остальное → direct (zapret уже разбирается с общим DPI). Сервис гонится через прокси заданием `http_proxy=http://172.17.0.1:10809` его контейнеру. Мосты WhatsApp/Signal/Telegram ходят через socks (`172.17.0.1:10808`).
+---
 
-## Безопасность
-- **Реальный `vars.yml` НИКОГДА не коммитим** — там пароли, ключи шифрования, API-ключи, Telegram-креды. [`.gitignore`](.gitignore) блокирует `vars.yml`, `*.bak`, `.secrets/`, ключи, xray-ссылки и подписки. В git едет только `examples/vars.sample.yml` (плейсхолдеры).
-- Регистрация **закрыта**: только по токену (админ выдаёт из панели MAS) — спам/чужие аккаунты исключены.
-- **Мосты — только для локальных юзеров.** В правах мостов нет правила `*`; чужой homeserver не сможет привязать свой Telegram/WhatsApp. Инвайты и сообщения от чужих вашим юзерам — работают штатно (это федерация).
-- **Личные диалоги шифруются по умолчанию** (E2EE). baibot и переводчик (maubot) тоже работают в зашифрованных комнатах.
+## 🔧 Что понадобится ввести (и где взять)
 
-## Обслуживание
-- Обновление: `just update && just install-all` (читай `CHANGELOG.md` апстрима на breaking-changes).
-- БД: `synapse-auto-compressor` (сжатие state-groups) + `postgres-backup` (логические дампы; Proxmox PBS затем забирает их).
-- Бэкап всего LXC — на уровне Proxmox (PBS) + ZFS.
-- Логи: журналд по контейнерам, напр. `journalctl -u matrix-synapse.service -f`.
-- Удалённые комнаты вычищаются из БД за ~1 час (а не за 28 дней) — в админке не висит «Deletion in progress».
+`setup.sh` спросит и подскажет:
+- **Домен** и имена поддоменов.
+- **Вариант развёртывания** (A/B/C) и адрес внешнего прокси (для B).
+- **Какие фичи включить:** мосты (и какие), AI-бот, переводчик/гифки, модерация, и т.д.
+- **API-ключи** (только для того, что включаете):
+  - AI: ключ [OpenRouter](https://openrouter.ai/keys) (бесплатные модели) и/или [Groq](https://console.groq.com).
+  - Гифки: ключ [Giphy](https://developers.giphy.com) (Create App → API).
+  - Telegram-мост: `api_id`/`api_hash` с [my.telegram.org](https://my.telegram.org).
+- Случайные секреты (пароли БД, ключи шифрования) скрипт генерирует сам.
 
-## Статус
-✅ **Готово и работает:** ядро, авторизация (MAS), звонки/видео + гости, федерация на 443, админки, поиск по всем юзерам, E2EE-диалоги, AI-бот с распознаванием фото, переводчик, напоминания, модерация (Draupnir), хелпдеск (Honoroit), приветственная комната, 6 мостов с самоподключением (только для своих), Xray-тулкит, авто-IP для LiveKit, бэкап/компрессия, быстрая очистка комнат.
+---
+
+## 🔒 Безопасность
+
+- **Реальный `vars.yml` НИКОГДА не коммитьте** — там пароли, ключи, токены. [`.gitignore`](.gitignore) блокирует
+  `vars.yml`, бэкапы, `.secrets/`, ключи, xray-ссылки. В git едет только `examples/vars.sample.yml` (плейсхолдеры).
+- Регистрация **закрыта** — только по токену-приглашению (спам/чужие исключены).
+- **Мосты — только для локальных пользователей**: чужой homeserver не сможет привязать свой аккаунт.
+- **Личные чаты шифруются по умолчанию** (E2EE) — на уровне сервера, без ручного включения.
+
+---
+
+## 🔄 Обслуживание
+
+- Обновление: `just update && just install-all` (читайте `CHANGELOG.md` апстрима). Встроенная авто-проверка обновлений
+  с AI-оценкой рисков уведомляет админа в отдельной комнате — см. [`check-updates.py`](check-updates.py).
+- БД: автокомпрессия state-groups + логические дампы Postgres.
+- Логи: `journalctl -u matrix-synapse.service -f` (и по другим сервисам).
+
+---
+
+## 📂 Структура репозитория
+
+| Путь | Что это |
+|---|---|
+| [`examples/vars.sample.yml`](examples/vars.sample.yml) | полный шаблон конфига с комментариями (плейсхолдеры) |
+| [`examples/`](examples/) | примеры конфигов внешнего Traefik / nginx |
+| [`setup.sh`](setup.sh) | интерактивный генератор `vars.yml` |
+| [`llm-gateway.py`](llm-gateway.py) | локальный шлюз к бесплатным LLM (пул + фолбэк + vision) для AI-бота |
+| [`check-updates.py`](check-updates.py) | еженедельная проверка обновлений с AI-оценкой рисков |
+| [`maubot-plugins/`](maubot-plugins/) | плагины maubot: переводчик-по-реакции, гифки, приветствие новичков |
+| [`docs/`](docs/) | функционал, порты, доустановка extras |
 
 ---
 Базируется на [matrix-docker-ansible-deploy](https://github.com/spantaleev/matrix-docker-ansible-deploy) (AGPL-3.0).

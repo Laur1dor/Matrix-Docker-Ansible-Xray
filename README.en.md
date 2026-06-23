@@ -1,111 +1,131 @@
 # Matrix-Docker-Ansible-Xray
 
-Self-hosted **Matrix (Synapse)** built on [spantaleev/matrix-docker-ansible-deploy](https://github.com/spantaleev/matrix-docker-ansible-deploy), adapted for a typical **home Proxmox lab**: the stack lives in an LXC, the **router is the only firewall / public ingress**, TLS terminates on a **separate external Traefik**, and outbound traffic can be sent through **Xray (VLESS/REALITY)** with hot-swap and failover when networks are hostile.
+A ready-to-run, "family/team" **Matrix messenger** built on
+[spantaleev/matrix-docker-ansible-deploy](https://github.com/spantaleev/matrix-docker-ansible-deploy) — but with a
+pre-assembled, tested set: **voice/video calls, guest conferences, an AI assistant that reads photos, a translator,
+GIFs, reminders, moderation, a helpdesk, a newcomer greeter, 6 messenger bridges** and an **optional Xray (VLESS/REALITY)
+censorship-circumvention toolkit**.
 
-On top of that — a full "household" feature set: **messenger + voice/video, guest conferences, an AI assistant with image understanding, a translator, reminders, moderation, a helpdesk, and 6 bridges** (Telegram/WhatsApp/Discord/Signal/Instagram/SMS) with self-service onboarding.
+Works on a **single VPS**, on a **home Proxmox/server**, or **behind your existing reverse proxy**
+(Traefik / nginx / Nginx Proxy Manager) — on the same or a separate machine.
 
-> 🇬🇧 This is the English overview. 🇷🇺 Primary README: [`README.md`](README.md).
-> 📖 **What it can do & how to use it (plain language, RU):** [`docs/FUNCTIONALITY.ru.md`](docs/FUNCTIONALITY.ru.md)
+> 🇬🇧 This is the English README. 🇷🇺 The primary one is [`README.md`](README.md).
+> 📖 What it does & how to use it (plain language, RU): [`docs/FUNCTIONALITY.ru.md`](docs/FUNCTIONALITY.ru.md).
+> ⚠️ **Never commit secrets** — see [Security](#-security). The repo only ships placeholder templates.
 
-> ⚠️ **Never commit secrets.** Only [`examples/vars.sample.yml`](examples/vars.sample.yml) (placeholders) lives in git. The real `vars.yml` (passwords, keys, tokens) is blocked by [`.gitignore`](.gitignore). See [Security](#security).
+---
 
-## What's inside
-**Core:** Synapse · MAS (modern auth, token-gated registration) · Element Web · Element Admin (Ketesa/synapse-admin) · ntfy (push) · well-known delegation (`@you:domain` user-ids).
-**Calls:** Element Call + LiveKit (1-1, group up to 10, screen share, **guests via link**) · coturn (legacy TURN).
-**Bots:** **baibot** (AI, vision, RU by default, E2EE) · **maubot + translator** (`!tr`) · **reminder-bot** · **registration-bot** · **Draupnir** (moderation) · **Honoroit** (helpdesk).
-**Bridges (self-onboarding, local users only):** Telegram · WhatsApp · Signal · Discord · Instagram · Android-SMS.
-**Infra:** **Xray toolkit** (`xray-manage`, hot-swap with no Matrix rebuild) · **livekit-ip-watcher** (auto public-IP tracking) · DB auto-compressor · logical Postgres backups · fast purge of deleted rooms.
+## ⚡ What's inside
 
-## Architecture
+**Core.** Synapse (homeserver) · MAS — modern auth, invite-token registration · Element Web · Element Admin
+(Ketesa/synapse-admin) · ntfy (push) · well-known delegation (so IDs look like `@you:example.com`).
 
-```
-                 Internet
-                    │  (1 public IP)
-            ┌───────▼────────┐
-            │  Router/OpenWRT │  firewall + DPI bypass (zapret)
-            │  port-forwards  │
-            └───┬────────┬────┘
-       80/443   │        │  LiveKit media: 7882/udp,7881/tcp,
-                │        │  3479/udp,5350/tcp,30000-30020/udp
-        ┌───────▼──┐  ┌──▼──────────────────────────────┐
-        │ .105     │  │ .106  LXC (Debian 12)            │
-        │ Traefik  │  │  internal Traefik :81 (no TLS)   │
-        │ (TLS,    │──┼─▶ Synapse/MAS/Element/Ketesa/... │
-        │  CF DNS) │  │  LiveKit · coturn · ntfy · bots  │
-        └──────────┘  │  bridges · Xray (selective)      │
-                      └──────────────────────────────────┘
-```
+**Realtime.** Element Call + LiveKit (1:1, groups, screen share, **guests via link, no signup**, participant cap) ·
+coturn (TURN/NAT traversal) · automatic E2EE for private chats.
 
-- **External Traefik (.105)** holds the certs (Cloudflare DNS-01 wildcard) and proxies every Matrix host to a **single** backend `http://<LXC>:81` (Host routing). Example: [`examples/traefik-matrix.yaml`](examples/traefik-matrix.yaml).
-- **Internal Traefik (.106:81)** is the playbook's black box: TLS off, it fans out to services, resolves MAS/Ketesa route-stealing, federation, etc.
-- **Federation runs on 443** via well-known delegation (no public 8448).
-- **Call media bypasses .105** — router port-forwards straight to .106 (RTC can't go through an HTTP reverse proxy).
+**Bots.**
+- 🤖 **AI assistant** (baibot) — answers anything, **understands attached photos**, in Russian by default; runs through a
+  local **free-model gateway** with auto-failover on rate limits (see [`llm-gateway.py`](llm-gateway.py)).
+- 🌐 **Translator + GIFs** (maubot): `!tr`, `!giphy`, and **translate-by-reaction** (flag emoji or 🌐).
+- 👋 **Newcomer greeter** — a personal welcome DM to every new user.
+- ⏰ **Reminders**, 🛡 **Moderation** (Draupnir), 🆘 **Helpdesk** (Honoroit).
 
-## DNS (Cloudflare, DNS-only / grey cloud)
-Apex `A` → public IP; subdomains `CNAME` → apex: `matrix`, `elementweb`, `admin`, `elementcall`, `push` (+ apex for well-known). A wildcard cert `*.domain` (+apex) covers everything.
+**Bridges** (self-service, local users only): Telegram · WhatsApp · Signal · Discord · Instagram · Android-SMS.
 
-## Public ports (on the public IP)
-| Port | Proto | → | Purpose |
-|---|---|---|---|
-| 80, 443 | TCP | .105 | HTTP(S) (incl. federation on 443) |
-| 7882 | UDP | .106 | LiveKit ICE/UDP (main media) |
-| 7881 | TCP | .106 | LiveKit ICE/TCP (fallback) |
-| 3479 | UDP | .106 | TURN/UDP |
-| 5350 | TCP | .106 | TURN/TLS |
-| 30000-30020 | UDP | .106 | TURN relay range |
-| 3478, 49152-49172 | TCP/UDP | .106 | coturn (legacy calls) |
+**Infra.** Optional **Xray toolkit** (`xray-manage` — hot-swap VLESS without rebuilds) · DB auto-compression · Postgres
+backups · fast purge of deleted rooms · **weekly update check with an AI risk assessment** ([`check-updates.py`](check-updates.py)).
 
-## Quick start
-On .106 (Debian 12, ≥6 GB RAM, Docker-in-LXC needs `nesting=1`):
+---
 
-1. **Deps:** `git`, **`sudo`** (absent on minimal Debian — required for ansible `become`), Docker (`get.docker.com`), **Ansible via pipx** (distro 2.14 is too old, need ≥2.15.1), `just`.
-2. `git clone` the upstream playbook → `just roles`.
-3. **Generate `vars.yml` for your domain** (auto-fills all random secrets):
+## 📋 Requirements
+
+**Server:** Debian 12 (or Ubuntu), **≥ 6 GB RAM** (4 GB is tight), **2+ cores**, ~25 GB disk to start (media grows).
+Docker required; on a Proxmox LXC enable **nesting=1**. One public IP.
+
+**Domain:** one domain (e.g. `example.com`) + subdomains. Defaults:
+
+| Subdomain | Purpose |
+|---|---|
+| `matrix.` | the homeserver + federation |
+| `element.` *(any name)* | Element web client |
+| `admin.` | admin panel |
+| `call.` | Element Call |
+| `push.` | ntfy |
+| apex `example.com` | well-known delegation (so IDs are `@you:example.com`) |
+
+Subdomain names are your choice (set in config). **DNS:** apex → `A` to your IP; subdomains → `CNAME` to the apex (or
+`A` to the same IP). A **wildcard cert** `*.example.com` (+ apex) is easiest.
+
+**Open ports:** `80`, `443` (HTTP/HTTPS incl. federation on 443). For calls (LiveKit/TURN) — UDP/TCP ranges listed in
+[`docs/PORTS.md`](docs/PORTS.md). Single public server → just unfirewalled; behind NAT → port-forward them.
+
+---
+
+## 🏗 Deployment options
+
+The Matrix stack always runs in Docker (the playbook installs it). The difference is **what sits in front and terminates TLS**:
+
+- **A — single server / VPS (simplest):** the playbook runs its **own Traefik** and gets Let's Encrypt certs itself.
+  Nothing external needed.
+- **B — behind your reverse proxy (Traefik / nginx / NPM):** Matrix serves plain HTTP on one port; your proxy terminates
+  TLS and forwards every matrix host to `http://MATRIX_HOST:PORT` by Host header. Examples:
+  [`examples/traefik-matrix.yaml`](examples/traefik-matrix.yaml), [`examples/nginx-matrix.conf`](examples/nginx-matrix.conf).
+  **Don't** attach header-mangling middleware — it breaks Element Call and OAuth.
+- **C — home Proxmox / behind a router:** same as A or B, plus forward 80/443 and the call media ports to the server.
+
+> Call (RTC) media **cannot** go through an HTTP reverse proxy — those ports hit the Matrix host directly.
+
+---
+
+## 🚀 Install
+
+1. Install deps on the server: `git`, **`sudo`** (mandatory; absent on minimal Debian), Docker
+   (`curl -fsSL https://get.docker.com | sh`), **Ansible via pipx** (distro packages are often too old; need ≥ 2.15.1), `just`.
+2. Clone the upstream **spantaleev/matrix-docker-ansible-deploy** and run `just roles`.
+3. Clone **this** repo alongside it and run the interactive script — it asks everything, explains where to get each
+   value, generates all random secrets, and writes your `vars.yml`:
    ```bash
-   ./setup.sh --domain example.com --public-ip 1.2.3.4 --traefik-ip 192.168.1.105
+   ./setup.sh
    ```
-   You only fill in API keys (Groq/OpenRouter), Telegram `api_id/api_hash`, the maubot web password and the Honoroit room id — the script lists them at the end.
-4. Copy the result to `inventory/host_vars/<domain>/vars.yml`, set up `inventory/hosts` (local connection).
-5. `just install-all` → register the admin (`just register-user admin <pass> yes`).
-6. Drop [`examples/traefik-matrix.yaml`](examples/traefik-matrix.yaml) on the external Traefik.
+4. Copy the resulting `vars.yml` into `inventory/host_vars/<your-domain>/vars.yml`, set up `inventory/hosts`.
+5. `just install-all` → register the admin (`just register-user admin <password> yes`).
+6. (Option B) Configure your external proxy from [`examples/`](examples/) + add DNS records.
+7. (Optional) Install the maubot plugins and the AI gateway — see [`docs/EXTRAS.md`](docs/EXTRAS.md).
 
-Key fronting/federation variables:
-```yaml
-matrix_playbook_reverse_proxy_type: playbook-managed-traefik
-matrix_playbook_ssl_enabled: true
-traefik_config_entrypoint_web_secure_enabled: false        # TLS off internally
-traefik_container_web_host_bind_port: '0.0.0.0:81'
-traefik_config_entrypoint_web_forwardedHeaders_trustedIPs: ['<TRAEFIK_IP>/32']
-matrix_synapse_http_listener_resource_names: ["client","federation"]
-matrix_federation_public_port: 443
-matrix_synapse_federation_port_enabled: false
-matrix_synapse_tls_federation_listener_enabled: false
-```
+A full annotated value reference ("what to change") is in [`examples/vars.sample.yml`](examples/vars.sample.yml).
 
-## Xray toolkit (optional censorship bypass)
-`xray-manage` hot-swaps the VLESS upstream without rebuilding Matrix (Matrix only ever talks to a stable local proxy port):
-```
-xray-manage sub '<url>'      # subscription (base64/plain)
-xray-manage link 'vless://...'
-xray-manage refresh | status | test | on | off
-```
-The generated config uses an **observatory + balancer** (auto-picks a live server) with `fallbackTag: direct` (all upstreams dead → go direct, the server stays online). Routing is **selective**: LAN/RU → direct, domains in `proxy-domains.txt` → via VLESS, the rest → direct. Point a service through the proxy with `http_proxy=http://172.17.0.1:10809` on its container; the WhatsApp/Signal/Telegram bridges use socks (`172.17.0.1:10808`).
+---
 
-## Security
-- **Never commit the real `vars.yml`** — it holds passwords, encryption keys, API keys, Telegram creds. [`.gitignore`](.gitignore) blocks `vars.yml`, `*.bak`, `.secrets/`, keys, xray links/subscriptions. Only `examples/vars.sample.yml` (placeholders) is committed.
-- Registration is **closed** — token only (admin issues tokens from the MAS panel).
-- **Bridges are local-users-only.** There is no `*` permission rule, so a foreign homeserver cannot link its Telegram/WhatsApp. Invites/messages from remote users to your users still work (that's federation).
-- **DMs are end-to-end encrypted by default.** baibot and the translator also operate in encrypted rooms.
+## 🔒 Security
 
-## Maintenance
-- Update: `just update && just install-all` (read upstream `CHANGELOG.md` for breaking changes).
-- DB: `synapse-auto-compressor` + `postgres-backup` (Proxmox PBS then grabs the dumps).
-- Whole-LXC backup via Proxmox PBS + ZFS.
-- Logs: `journalctl -u matrix-synapse.service -f` (and per other containers).
-- Rooms abandoned by everyone are purged from the DB in ~1h (no lingering "Deletion in progress").
+- **Never commit your real `vars.yml`** — it holds passwords, keys, tokens. [`.gitignore`](.gitignore) blocks `vars.yml`,
+  backups, `.secrets/`, keys, xray links. Only `examples/vars.sample.yml` (placeholders) is tracked.
+- Registration is **closed** — invite-token only.
+- **Bridges are local-users-only** — a foreign homeserver can't attach its account.
+- **Private chats are E2EE by default** — enforced server-side, no manual toggling.
 
-## Status
-✅ **Done and running:** core, MAS auth, calls/video + guests, federation on 443, admin panels, server-wide user search, E2EE DMs, AI bot with image understanding, translator, reminders, moderation (Draupnir), helpdesk (Honoroit), welcome room, 6 self-onboarding bridges (local-only), Xray toolkit, dynamic LiveKit IP, backups/compression, fast room cleanup.
+---
+
+## 🔄 Maintenance
+
+- Update: `just update && just install-all` (read upstream `CHANGELOG.md`). The built-in weekly checker posts an AI risk
+  assessment to an admin room — see [`check-updates.py`](check-updates.py).
+- DB: state-group auto-compression + logical Postgres dumps.
+- Logs: `journalctl -u matrix-synapse.service -f` (and other services).
+
+---
+
+## 📂 Repo layout
+
+| Path | What |
+|---|---|
+| [`examples/vars.sample.yml`](examples/vars.sample.yml) | full annotated config template (placeholders) |
+| [`examples/`](examples/) | external Traefik / nginx examples |
+| [`setup.sh`](setup.sh) | interactive `vars.yml` generator |
+| [`llm-gateway.py`](llm-gateway.py) | local free-LLM gateway (pool + failover + vision) for the AI bot |
+| [`check-updates.py`](check-updates.py) | weekly update check with AI risk assessment |
+| [`maubot-plugins/`](maubot-plugins/) | maubot plugins: translate-by-reaction, GIFs, newcomer greeter |
+| [`docs/`](docs/) | functionality, ports, extras install |
 
 ---
 Based on [matrix-docker-ansible-deploy](https://github.com/spantaleev/matrix-docker-ansible-deploy) (AGPL-3.0).

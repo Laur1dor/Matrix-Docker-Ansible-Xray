@@ -10,7 +10,7 @@
 #      Use a password manager for human/bot login passwords.
 # ============================================================================
 # ==========================================================================
-# Matrix @ example.com  |  LXC 192.168.1.106  |  fronted by Traefik @ .105
+# Example: Matrix @ example.com  |  fronted by your reverse proxy (or built-in)
 # Phase 1 — base working install (no xray; calls via Element Call/LiveKit)
 # ==========================================================================
 

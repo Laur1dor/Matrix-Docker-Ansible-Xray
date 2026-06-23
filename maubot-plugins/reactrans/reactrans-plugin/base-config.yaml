@@ -1,2 +1,5 @@
 # translate-by-reaction: flag emoji -> translate to that language; 🌐 -> ask the target language
 ask_emoji: "🌐"
+# (опц.) адрес llm-gateway.py — нужен только чтобы 🌐 понимал ЛЮБОЙ язык по названию ("суахили").
+# Без него работают флаги и известные языки/коды. См. docs/EXTRAS.md. Пример: http://llm-gateway:8765
+gateway_url: ""

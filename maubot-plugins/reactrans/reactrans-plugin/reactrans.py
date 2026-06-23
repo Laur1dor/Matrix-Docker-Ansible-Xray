@@ -31,6 +31,7 @@ NAME2LANG = {
 class Config(BaseProxyConfig):
     def do_update(self, helper: ConfigUpdateHelper) -> None:
         helper.copy("ask_emoji")
+        helper.copy("gateway_url")
 
 
 class ReactTransBot(Plugin):
@@ -60,7 +61,10 @@ class ReactTransBot(Plugin):
             payload = {"messages": [{"role": "user",
                 "content": ("Дай ISO 639-1 код языка для названия: \"%s\". "
                             "Ответь ТОЛЬКО кодом (например en, de, zh-CN, sw), без пояснений." % ans)}]}
-            async with self.http.post("http://172.21.0.1:8765/v1/chat/completions",
+            gw = (self.config["gateway_url"] or "").rstrip("/")
+            if not gw:
+                return ""  # no LLM gateway configured -> only known languages/codes work
+            async with self.http.post(gw + "/v1/chat/completions",
                                       json=payload, timeout=20) as r:
                 d = await r.json(content_type=None)
             code = d["choices"][0]["message"]["content"].strip().strip(".`\" \n").split()[0]
