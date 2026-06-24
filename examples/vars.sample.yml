@@ -374,3 +374,15 @@ matrix_bot_draupnir_config_accessToken: "CHANGEME_draupnir_access_token"
 livekit_server_configuration_extension_yaml: |
   room:
     max_participants: 10
+
+# --- (опц.) Вынос медиа Synapse в S3-совместимое хранилище (Garage / MinIO / AWS S3) ---
+# Освобождает локальный диск: новое медиа пишется локально + в S3, старое периодически
+# переносится в S3 и локальные копии чистятся (systemd timer ...-migrate.timer).
+# Лёгкий self-host вариант — Garage; полный пример (docker-compose + garage.toml + Traefik) в docs/EXTRAS.md.
+# matrix_synapse_ext_synapse_s3_storage_provider_enabled: true
+# matrix_synapse_ext_synapse_s3_storage_provider_config_bucket: "matrix-media"
+# matrix_synapse_ext_synapse_s3_storage_provider_config_region_name: "garage"          # для AWS — реальный регион
+# matrix_synapse_ext_synapse_s3_storage_provider_config_endpoint_url: "http://CHANGEME-s3-host:3900"  # прямой адрес => path-style
+# matrix_synapse_ext_synapse_s3_storage_provider_config_storage_class: "STANDARD"
+# matrix_synapse_ext_synapse_s3_storage_provider_config_access_key_id: "CHANGEME_s3_access_key_id"
+# matrix_synapse_ext_synapse_s3_storage_provider_config_secret_access_key: "CHANGEME_s3_secret_access_key"
