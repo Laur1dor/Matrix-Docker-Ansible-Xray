@@ -168,7 +168,10 @@ matrix_bot_baibot_config_agents_static_definitions_custom:
   - id: openrouter
     provider: openai
     config:
-      base_url: https://openrouter.ai/api/v1   # или http://GATEWAY:8765/v1 при использовании llm-gateway.py
+      # Прямой доступ работает не везде: из России openrouter.ai отдаёт 403 "Access denied by
+      # security policy" — тогда ставьте llm-gateway.py и меняйте на http://GATEWAY:8765/v1
+      # (шлюз сам ходит наружу через xray и переключает бесплатные модели). См. docs/EXTRAS.md.
+      base_url: https://openrouter.ai/api/v1
       api_key: "${OR_KEY}"
       text_generation:
         model_id: "google/gemma-4-31b-it:free"

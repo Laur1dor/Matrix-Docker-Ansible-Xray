@@ -4,10 +4,16 @@ baibot LLM gateway — multi-provider free-LLM proxy.
 Speaks BOTH OpenAI Chat-Completions (/v1/chat/completions) AND the Responses API
 (/v1/responses, which baibot's `openai` provider uses — and which carries images).
 Internally everything is run as Chat-Completions against:
-  Groq (via xray, generous free limits, llama-4-scout for vision) -> OpenRouter free pool -> friendly msg.
-Vision-aware. Stdlib + curl (urllib can't tunnel HTTPS through the proxy). systemd, 0.0.0.0:8765.
+  Groq (text) -> OpenRouter free pool (text + vision) -> friendly msg.
+
+ALL upstream traffic goes through xray's SOCKS inbound (127.0.0.1:10808), which the
+generated xray config always routes through the VLESS balancer (fallbackTag: direct).
+Reason: both Groq and OpenRouter block/deny Russian egress IPs; OpenRouter answers
+`403 Access denied by security policy` when reached directly. The HTTP inbound (10809)
+is domain-list based and would leak these hosts out direct, so SOCKS is used instead.
+Stdlib + curl (urllib can't tunnel HTTPS through a proxy). systemd, 0.0.0.0:8765.
 """
-import json, sys, time, subprocess, urllib.request
+import json, sys, time, subprocess
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 def rd(p):
@@ -18,36 +24,64 @@ OR_KEY = rd("/root/.secrets/openrouter_key")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 OR_URL = "https://openrouter.ai/api/v1/chat/completions"
 OR_MODELS = "https://openrouter.ai/api/v1/models"
-XRAY = "http://127.0.0.1:10809"
+XRAY = "socks5h://127.0.0.1:10808"
 LISTEN = ("0.0.0.0", 8765)
 FRIENDLY = ("Извини, сейчас все бесплатные нейросети перегружены (исчерпаны лимиты). "
             "Попробуй, пожалуйста, ещё раз через минуту 🙏")
-RETRY = {429, 402, 403, 500, 502, 503, 520, 524}
-SKIP = ["lyria", "content-safety", "whisper", "tts", "embed", "image-gen", "stable-diffusion"]
-GROQ_TEXT = ["llama-3.3-70b-versatile", "meta-llama/llama-4-scout-17b-16e-instruct"]
-GROQ_VIS = ["meta-llama/llama-4-scout-17b-16e-instruct"]
+SKIP = ["lyria", "content-safety", "whisper", "tts", "embed", "image-gen",
+        "stable-diffusion", "prompt-guard", "orpheus", "safeguard"]
+# Groq retired llama-3.3-70b-versatile and llama-4-scout (404 model_not_found).
+GROQ_TEXT = ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b"]
+GROQ_VIS = []  # Groq currently offers no vision model — images go to OpenRouter.
 
 _cache = {"t": 0.0, "or_text": [], "or_vis": []}
 def log(*a): print("[gw]", *a, file=sys.stderr, flush=True)
 
+def curl(url, key, payload=None, timeout=75):
+    """GET/POST through the xray SOCKS proxy. Returns (http_code, body_bytes)."""
+    cmd = ["curl", "-s", "-x", XRAY, "-m", str(timeout - 15), "-w", "\n%{http_code}", url,
+           "-H", "Authorization: Bearer " + key]
+    if payload is not None:
+        cmd += ["-X", "POST", "-H", "Content-Type: application/json",
+                "-H", "HTTP-Referer: https://example.com", "-H", "X-Title: matrix-baibot",
+                "--data-binary", "@-"]
+    try:
+        p = subprocess.run(cmd, input=payload, capture_output=True, timeout=timeout)
+    except Exception:
+        return 0, b""
+    out = p.stdout; nl = out.rfind(b"\n")
+    if nl < 0: return 0, out
+    try: code = int(out[nl + 1:].strip() or 0)
+    except ValueError: code = 0
+    return code, out[:nl]
+
 def refresh():
     if _cache["or_text"] and time.time() - _cache["t"] < 1800: return
+    code, body = curl(OR_MODELS, OR_KEY, timeout=35)
+    if code != 200 or not body:
+        log("refresh: openrouter model list failed, code=", code, body[:160]); return
     try:
-        op = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        d = json.loads(op.open(urllib.request.Request(OR_MODELS, headers={"Authorization": "Bearer " + OR_KEY}), timeout=20).read())
-        t = []; v = []
-        for m in d.get("data", []):
-            pr = m.get("pricing", {}); mid = m.get("id", "")
-            if pr.get("prompt") != "0" or pr.get("completion") != "0": continue
-            if any(s in mid for s in SKIP): continue
-            t.append(mid)
-            if "image" in m.get("architecture", {}).get("input_modalities", []): v.append(mid)
-        if t: _cache.update(t=time.time(), or_text=t, or_vis=v)
-    except Exception: pass
+        d = json.loads(body)
+    except Exception:
+        log("refresh: bad json from openrouter"); return
+    t = []; v = []
+    for m in d.get("data", []):
+        pr = m.get("pricing", {}); mid = m.get("id", "")
+        if pr.get("prompt") != "0" or pr.get("completion") != "0": continue
+        if any(s in mid for s in SKIP): continue
+        t.append(mid)
+        if "image" in m.get("architecture", {}).get("input_modalities", []): v.append(mid)
+    # openrouter/free auto-routes across the whole free pool — best first pick.
+    for lst in (t, v):
+        if "openrouter/free" in lst:
+            lst.remove("openrouter/free"); lst.insert(0, "openrouter/free")
+    if t:
+        _cache.update(t=time.time(), or_text=t, or_vis=v)
+        log("refresh: openrouter free pool =", len(t), "text /", len(v), "vision")
 
 def candidates(vision):
     refresh()
-    # (provider, model): provider "groq" -> via xray; "or" -> direct
+    # (provider, model): both providers go out through xray.
     if vision:
         return [("groq", m) for m in GROQ_VIS] + [("or", m) for m in _cache["or_vis"]]
     return [("groq", m) for m in GROQ_TEXT] + [("or", m) for m in _cache["or_text"]]
@@ -90,10 +124,17 @@ def responses_to_chat(body):
     if body.get("temperature") is not None: chat["temperature"] = body["temperature"]
     return chat
 
+def content_of(raw):
+    """Text of a chat-completion reply, or None if the answer is unusable."""
+    try: m = json.loads(raw)["choices"][0]["message"]
+    except Exception: return None
+    c = m.get("content")
+    if isinstance(c, list):  # some providers return content parts
+        c = "".join(p.get("text", "") for p in c if isinstance(p, dict))
+    return c.strip() if isinstance(c, str) and c.strip() else None
+
 def chat_to_responses(raw, model):
-    try: text = json.loads(raw)["choices"][0]["message"].get("content", "") or ""
-    except Exception: text = ""
-    return responses_obj(text, model)
+    return responses_obj(content_of(raw) or "", model)
 
 def responses_obj(text, model):
     return json.dumps({"id": "resp_gw", "object": "response", "created_at": int(time.time()),
@@ -111,24 +152,21 @@ def try_all(chatbody, cands):
         payload["model"] = model
         url = GROQ_URL if prov == "groq" else OR_URL
         key = GROQ_KEY if prov == "groq" else OR_KEY
-        cmd = ["curl", "-s", "-m", "60", "-w", "\n%{http_code}", "-X", "POST", url,
-               "-H", "Authorization: Bearer " + key, "-H", "Content-Type: application/json",
-               "-H", "HTTP-Referer: https://example.com", "-H", "X-Title: matrix-baibot", "--data-binary", "@-"]
-        if prov == "groq": cmd[1:1] = ["-x", XRAY]
-        try:
-            p = subprocess.run(cmd, input=json.dumps(payload).encode(), capture_output=True, timeout=75)
-            out = p.stdout; nl = out.rfind(b"\n")
-            raw = out[:nl] if nl >= 0 else out
-            code = int(out[nl+1:].strip() or 0) if nl >= 0 else 0
-            if code == 200 and raw:
-                j = json.loads(raw)
-                if isinstance(j, dict) and j.get("error"): last = (429, raw); continue
+        code, raw = curl(url, key, json.dumps(payload).encode())
+        if code == 200 and raw:
+            j = None
+            try: j = json.loads(raw)
+            except Exception: pass
+            # 200 + {"error": ...} or an empty answer (reasoning model that ran out of
+            # tokens) is a failure — fall through to the next candidate instead of
+            # handing baibot a blank message.
+            if isinstance(j, dict) and not j.get("error") and content_of(raw) is not None:
                 return 200, raw, model
-            last = (code, raw)
-            if code in RETRY or code == 0: continue
-            return code, raw, model
-        except Exception:
-            last = (503, None); continue
+            last = (429, raw); continue
+        # Any non-200 (including 404 model_not_found, which is how a retired model
+        # shows up) must NOT abort the chain — that is what killed the whole pool
+        # when Groq dropped llama-3.3-70b-versatile.
+        last = (code, raw)
     return last[0], last[1], None
 
 def sse(text):
@@ -164,10 +202,7 @@ class H(BaseHTTPRequestHandler):
         log("POST", self.path, "resp_api=", is_resp, "img=", img, "cands=", len(cands), "-> code=", code, "used=", used)
         if code == 200 and data:
             if is_resp: self._s(200, chat_to_responses(data, used))
-            elif want_stream:
-                try: c = json.loads(data)["choices"][0]["message"].get("content", "")
-                except Exception: c = ""
-                self._s(200, sse(c), "text/event-stream")
+            elif want_stream: self._s(200, sse(content_of(data) or ""), "text/event-stream")
             else: self._s(200, data)
         else:
             if is_resp: self._s(200, responses_obj(FRIENDLY, "gateway"))

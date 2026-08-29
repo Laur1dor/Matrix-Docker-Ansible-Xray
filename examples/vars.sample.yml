@@ -165,7 +165,7 @@ matrix_bot_baibot_config_persistence_session_encryption_key: "CHANGEME_openssl_r
 matrix_bot_baibot_config_persistence_config_encryption_key: "CHANGEME_openssl_rand_hex_32"
 matrix_bot_baibot_config_agents_static_definitions_groq_enabled: true
 matrix_bot_baibot_config_agents_static_definitions_groq_config_api_key: "CHANGEME_your_groq_api_key"
-matrix_bot_baibot_config_agents_static_definitions_groq_config_text_generation_model_id: "llama-3.3-70b-versatile"
+matrix_bot_baibot_config_agents_static_definitions_groq_config_text_generation_model_id: "openai/gpt-oss-120b"
 matrix_bot_baibot_config_agents_static_definitions_prompt: "You are a helpful, friendly assistant in a private family Matrix chat. Be concise and polite. Refuse illegal, harmful, hateful or sexual requests."
 matrix_bot_baibot_config_initial_global_config_handler_catch_all: static/openrouter-gemma
 matrix_bot_baibot_container_extra_arguments:
@@ -312,14 +312,16 @@ matrix_mautrix_telegram_configuration_extension_yaml: |
         shared_no_users: delete
         shared_has_users: unbridge
 
-# OpenRouter agent — free, vision-capable (Gemma 4), reachable from RU directly (no proxy)
+# OpenRouter agent — free + vision-capable, served by the local gateway.
+# NOTE: openrouter.ai denies RU egress ("Access denied by security policy"), so the
+# gateway sends BOTH Groq and OpenRouter through xray (socks5h://127.0.0.1:10808).
 matrix_bot_baibot_config_agents_static_definitions_custom:
   - id: openrouter-gemma
     # "openai" provider uses the Responses API (carries images -> vision works). Our gateway
     # translates Responses<->ChatCompletions and runs the free-model fallback behind it.
     provider: openai
     config:
-      # Local gateway: Groq(via xray)+OpenRouter free pool, auto-fallback, vision-aware routing.
+      # Local gateway: Groq + OpenRouter free pool (both via xray), auto-fallback, vision-aware routing.
       base_url: http://172.21.0.1:8765/v1
       api_key: "CHANGEME_your_openrouter_api_key"
       text_generation:
