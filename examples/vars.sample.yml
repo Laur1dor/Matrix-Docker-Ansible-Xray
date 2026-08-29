@@ -192,11 +192,11 @@ matrix_synapse_encryption_enabled_by_default_for_room_type: invite
 
 # ===== Bridges — Batch A (direct, no proxy): Discord, Instagram, Android-SMS =====
 # Self-onboarding: each user DMs the bridge bot and logs into their own account.
-matrix_mautrix_discord_enabled: true
-matrix_mautrix_meta_instagram_enabled: true
-matrix_mautrix_gmessages_enabled: true
+matrix_bridge_mautrix_discord_enabled: true
+matrix_bridge_mautrix_meta_instagram_enabled: true
+matrix_bridge_mautrix_gmessages_enabled: true
 # clean up bridged rooms on logout (no orphan rooms left in the admin panel)
-matrix_mautrix_gmessages_configuration_extension_yaml: |
+matrix_bridge_mautrix_gmessages_configuration_extension_yaml: |
   bridge:
     cleanup_on_logout:
       enabled: true
@@ -212,8 +212,8 @@ matrix_mautrix_gmessages_configuration_extension_yaml: |
         shared_has_users: unbridge
 
 # ===== Bridges — Batch B (via xray/Finland): Signal, WhatsApp =====
-matrix_mautrix_whatsapp_enabled: true
-matrix_mautrix_whatsapp_configuration_extension_yaml: |
+matrix_bridge_mautrix_whatsapp_enabled: true
+matrix_bridge_mautrix_whatsapp_configuration_extension_yaml: |
   network:
     proxy: "socks5://172.21.0.1:10808"
     # Don't pull in ALL chats (was -1 = unlimited -> flooded the room list). Only ~25 most recent.
@@ -233,9 +233,9 @@ matrix_mautrix_whatsapp_configuration_extension_yaml: |
         shared_no_users: delete
         shared_has_users: unbridge
 
-matrix_mautrix_signal_enabled: true
+matrix_bridge_mautrix_signal_enabled: true
 # clean up bridged rooms on logout (no orphan rooms left in the admin panel)
-matrix_mautrix_signal_configuration_extension_yaml: |
+matrix_bridge_mautrix_signal_configuration_extension_yaml: |
   bridge:
     cleanup_on_logout:
       enabled: true
@@ -249,7 +249,7 @@ matrix_mautrix_signal_configuration_extension_yaml: |
         relayed: unbridge
         shared_no_users: delete
         shared_has_users: unbridge
-matrix_mautrix_signal_container_extra_arguments:
+matrix_bridge_mautrix_signal_container_extra_arguments:
   - "--env"
   - "HTTPS_PROXY=socks5://172.21.0.1:10808"
   - "--env"
@@ -271,8 +271,6 @@ matrix_bot_matrix_reminder_bot_enabled: true
 matrix_bot_matrix_reminder_bot_database_password: "CHANGEME_openssl_rand_hex_20"
 matrix_bot_matrix_reminder_bot_matrix_user_password: "CHANGEME_strong_password"
 # Disabled — incompatible with MAS (only `help` worked). Use `make-invite` / mas-cli instead.
-matrix_bot_matrix_registration_bot_enabled: false
-matrix_bot_matrix_registration_bot_bot_password: "CHANGEME_strong_password"
 matrix_bot_honoroit_enabled: true
 matrix_bot_honoroit_database_password: "CHANGEME_openssl_rand_hex_20"
 matrix_bot_honoroit_password: "CHANGEME_strong_password"
@@ -287,10 +285,10 @@ matrix_bot_maubot_admins:
   admin: "CHANGEME_maubot_web_password"
 
 # ===== Telegram bridge (MTProto via xray socks -> Finland) =====
-matrix_mautrix_telegram_enabled: true
-matrix_mautrix_telegram_api_id: "0000000"
-matrix_mautrix_telegram_api_hash: "CHANGEME_telegram_api_hash"
-matrix_mautrix_telegram_configuration_extension_yaml: |
+matrix_bridge_mautrix_telegram_enabled: true
+matrix_bridge_mautrix_telegram_api_id: "0000000"
+matrix_bridge_mautrix_telegram_api_hash: "CHANGEME_telegram_api_hash"
+matrix_bridge_mautrix_telegram_configuration_extension_yaml: |
   network:
     proxy:
       type: socks5
@@ -335,22 +333,22 @@ matrix_bot_baibot_config_agents_static_definitions_custom:
       image_generation: null
 
 # ===== Bridge access: ONLY local example.com users can link accounts; remote homeservers get NO bridge access =====
-matrix_mautrix_telegram_bridge_permissions:
+matrix_bridge_mautrix_telegram_bridge_permissions:
   "@admin:example.com": admin
   example.com: user
-matrix_mautrix_whatsapp_bridge_permissions:
+matrix_bridge_mautrix_whatsapp_bridge_permissions:
   "@admin:example.com": admin
   example.com: user
-matrix_mautrix_signal_bridge_permissions:
+matrix_bridge_mautrix_signal_bridge_permissions:
   "@admin:example.com": admin
   example.com: user
-matrix_mautrix_discord_bridge_permissions:
+matrix_bridge_mautrix_discord_bridge_permissions:
   "@admin:example.com": admin
   example.com: user
-matrix_mautrix_meta_instagram_bridge_permissions:
+matrix_bridge_mautrix_meta_instagram_bridge_permissions:
   "@admin:example.com": admin
   example.com: user
-matrix_mautrix_gmessages_bridge_permissions:
+matrix_bridge_mautrix_gmessages_bridge_permissions:
   "@admin:example.com": admin
   example.com: user
 

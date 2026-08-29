@@ -223,10 +223,10 @@ cat <<YAML
 matrix_bridges_encryption_enabled: true
 matrix_bridges_encryption_default: true
 YAML
-[ "$EN_TG" = y ]  && printf 'matrix_mautrix_telegram_enabled: true\nmatrix_mautrix_telegram_api_id: %s\nmatrix_mautrix_telegram_api_hash: "%s"\nmatrix_mautrix_telegram_bridge_permissions:\n  "@admin:%s": admin\n  %s: user\n' "${TG_ID:-0}" "$TG_HASH" "$DOMAIN" "$DOMAIN"
+[ "$EN_TG" = y ]  && printf 'matrix_bridge_mautrix_telegram_enabled: true\nmatrix_bridge_mautrix_telegram_api_id: %s\nmatrix_bridge_mautrix_telegram_api_hash: "%s"\nmatrix_bridge_mautrix_telegram_bridge_permissions:\n  "@admin:%s": admin\n  %s: user\n' "${TG_ID:-0}" "$TG_HASH" "$DOMAIN" "$DOMAIN"
 for pair in "WA:whatsapp:$EN_WA" "SIG:signal:$EN_SIG" "DIS:discord:$EN_DIS" "IG:meta_instagram:$EN_IG" "SMS:gmessages:$EN_SMS"; do
   IFS=: read -r _ name en <<<"$pair"
-  [ "$en" = y ] && printf 'matrix_mautrix_%s_enabled: true\nmatrix_mautrix_%s_bridge_permissions:\n  "@admin:%s": admin\n  %s: user\n' "$name" "$name" "$DOMAIN" "$DOMAIN"
+  [ "$en" = y ] && printf 'matrix_bridge_mautrix_%s_enabled: true\nmatrix_bridge_mautrix_%s_bridge_permissions:\n  "@admin:%s": admin\n  %s: user\n' "$name" "$name" "$DOMAIN" "$DOMAIN"
 done
 fi
 
