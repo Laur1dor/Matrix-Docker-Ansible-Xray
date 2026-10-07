@@ -107,7 +107,7 @@ matrix_synapse_configuration_extension_yaml: |
 matrix_authentication_service_enabled: true
 matrix_authentication_service_config_secrets_encryption: '$(rnd 32)'
 matrix_authentication_service_config_account_password_registration_enabled: true
-matrix_authentication_service_config_account_registration_token_required: true
+matrix_authentication_service_config_account_password_registration_token_required: true
 matrix_authentication_service_config_account_password_registration_email_required: false
 
 # ----- клиенты / админка / push -----

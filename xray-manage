@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+"""Transactional Xray upstream management. No timers; secrets never enter output."""
+import argparse
+import base64
+import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import time
+from urllib.parse import urlsplit
+try:
+    import fcntl
+except ImportError:  # Tests may run on Windows; production requires Linux.
+    fcntl = None
+
+DIR = Path('/usr/local/etc/xray')
+SWAP = DIR / 'swap'
+PROXY = 'socks5h://127.0.0.1:10808'
+PROBE = 'https://api.groq.com/openai/v1/models'
+
+
+def run(args, deadline, cap=10):
+    remaining = min(cap, deadline - time.monotonic())
+    if remaining <= 0: raise RuntimeError('operation deadline exceeded')
+    try:
+        result = subprocess.run(args, capture_output=True, timeout=remaining)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError('operation timed out') from None
+    if result.returncode: raise RuntimeError('command failed: ' + Path(args[0]).name)
+    return result.stdout
+
+
+def parse_links(raw):
+    try:
+        decoded = base64.b64decode(b''.join(raw.split()), validate=True)
+        if b'://' in decoded: raw = decoded
+    except ValueError:
+        pass
+    try: lines = raw.decode('utf-8').splitlines()
+    except UnicodeError: raise RuntimeError('subscription is not UTF-8') from None
+    links = [line.strip() for line in lines if line.strip() and not line.lstrip().startswith('#')]
+    if not links or any(urlsplit(line).scheme not in ('vless', 'vmess', 'trojan', 'ss') for line in links):
+        raise RuntimeError('subscription contained invalid or unsupported links')
+    return ('\n'.join(links) + '\n').encode(), len(links)
+
+
+def atomic_write(path, data, mode=0o600):
+    fd, name = tempfile.mkstemp(prefix='.stage-', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'wb') as handle:
+            handle.write(data); handle.flush(); os.fsync(handle.fileno())
+        os.chmod(name, mode)
+        os.replace(name, path)
+    finally:
+        if os.path.exists(name): os.unlink(name)
+
+
+def probe(deadline):
+    code = run(['curl', '--silent', '--noproxy', '', '--proxy', PROXY,
+                '--connect-timeout', '2', '--max-time', '5', '-o', '/dev/null',
+                '-w', '%{http_code}', PROBE], deadline, 5).strip()
+    # Unauthenticated Groq returns 401 from an accessible region, 403 when geo-blocked.
+    # Unlike a generic 204 URL, this rejects Xray's Russian direct fallback.
+    if code != b'401': raise RuntimeError('SOCKS provider reachability probe failed')
+
+
+def transaction(command, value=None, timeout=55, directory=None, backup_root=None):
+    directory = Path(directory or DIR)
+    swap = directory / 'swap'; swap.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + timeout
+    work_deadline = deadline - 5  # Always reserve rollback/restart time.
+    lock = (swap / '.manage.lock').open('a')
+    if fcntl:
+        try: fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError: lock.close(); raise RuntimeError('another Xray update is running') from None
+    try:
+        saved_url = (swap / 'sub.url').read_bytes() if (swap / 'sub.url').exists() else None
+        if command in ('refresh', 'sub'):
+            url = value if command == 'sub' else (saved_url or b'').decode().strip()
+            if not url or urlsplit(url).scheme not in ('http', 'https'):
+                raise RuntimeError('no valid subscription saved; use xray-manage sub <url>')
+            raw = run(['curl', '--silent', '--fail', '--location', '--proto', '=http,https',
+                       '--proto-redir', '=http,https', '--connect-timeout', '3', '--max-time', '8',
+                       '--max-filesize', '2097152', url], work_deadline, 8)
+            subscription = url.encode()
+        elif command == 'link':
+            raw = (value or '').encode(); subscription = None
+        else: raise RuntimeError('unsupported mutation')
+        links, count = parse_links(raw)
+        with tempfile.TemporaryDirectory(prefix='.prepare-', dir=swap) as staging:
+            stage = Path(staging)
+            (stage / 'links.txt').write_bytes(links)
+            generated = run(['node', str(swap / 'xray-gen.js'), str(stage / 'links.txt'),
+                             str(swap / 'proxy-domains.txt')], work_deadline, 4)
+            try:
+                config = json.loads(generated)
+                parsed = [o for o in config['outbounds'] if o.get('tag', '').startswith('proxy-')]
+                if len(parsed) != count: raise ValueError()
+            except (ValueError, KeyError, TypeError):
+                raise RuntimeError('generation did not preserve every upstream') from None
+            candidate = stage / 'config.json'; candidate.write_bytes(generated)
+            run(['/usr/local/bin/xray', 'run', '-test', '-config', str(candidate)], work_deadline, 4)
+            targets = [directory / 'config.json', swap / 'links.txt', swap / 'sub.url']
+            original = {p: (p.read_bytes(), p.stat().st_mode & 0o777) if p.exists() else None for p in targets}
+            desired = [generated, links, subscription]
+            if all((state[0] if state else None) == wanted for state, wanted in zip(original.values(), desired)):
+                try:
+                    probe(work_deadline)
+                    print('OK — existing config matches subscription and SOCKS probe passed; no restart needed')
+                    return
+                except RuntimeError:
+                    pass  # Same config may still need a restart to restore its connection.
+            if work_deadline - time.monotonic() < 3:
+                raise RuntimeError('insufficient time to apply safely')
+            backups = Path(backup_root or '/root/backups'); backups.mkdir(parents=True, exist_ok=True)
+            backup = Path(tempfile.mkdtemp(prefix='xray-manage-', dir=backups))
+            for p, state in original.items():
+                if state: atomic_write(backup / p.name, state[0])
+            try:
+                atomic_write(targets[0], generated, original[targets[0]][1] if original[targets[0]] else 0o600)
+                atomic_write(targets[1], links)
+                if subscription is None: targets[2].unlink(missing_ok=True)
+                else: atomic_write(targets[2], subscription)
+                run(['systemctl', 'restart', 'xray'], work_deadline, 4)
+                # Start-up can take a moment; retry within the same deadline.
+                while True:
+                    try: probe(work_deadline); break
+                    except RuntimeError:
+                        if work_deadline - time.monotonic() < 1: raise
+                        time.sleep(min(0.25, max(0, work_deadline - time.monotonic())))
+            except Exception:
+                for p, state in original.items():
+                    if state: atomic_write(p, state[0], state[1])
+                    else: p.unlink(missing_ok=True)
+                try: run(['systemctl', 'restart', 'xray'], deadline, 5)
+                except RuntimeError:
+                    raise RuntimeError('update rolled back, but Xray restart failed; backup: ' + str(backup)) from None
+                raise RuntimeError('update failed; previous files restored; backup: ' + str(backup)) from None
+        print('OK — validated upstream applied and SOCKS provider probe passed; backup:', backup)
+    finally:
+        lock.close()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('command', nargs='?', default='help', choices=['link', 'sub', 'refresh', 'status', 'test', 'on', 'off', 'help'])
+    parser.add_argument('value', nargs='?')
+    parser.add_argument('--timeout', type=float, default=55)
+    args = parser.parse_args()
+    if args.timeout < 10: parser.error('--timeout must be at least 10 seconds')
+    if args.command in ('link', 'sub', 'refresh'):
+        transaction(args.command, args.value, args.timeout)
+    elif args.command in ('status', 'test'):
+        if args.command == 'status':
+            print('xray service:', run(['systemctl', 'is-active', 'xray'], time.monotonic() + 3).decode().strip())
+            print('mode:', 'subscription' if (SWAP / 'sub.url').exists() else 'single-link')
+        probe(time.monotonic() + 6); print('SOCKS provider probe: OK')
+    elif args.command in ('on', 'off'):
+        run(['systemctl', 'enable' if args.command == 'on' else 'disable', '--now', 'xray'], time.monotonic() + 15)
+    else:
+        parser.print_help()
+        print('Forced domains:', SWAP / 'proxy-domains.txt')
+
+
+if __name__ == '__main__':
+    try: main()
+    except (RuntimeError, OSError) as error:
+        print('error:', error, file=__import__('sys').stderr)
+        raise SystemExit(1)

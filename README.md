@@ -76,6 +76,9 @@ Matrix-стек всегда крутится в Docker (его ставит п�
 а TLS терминирует ваш прокси. В конфиге внутренний Traefik переводится в режим «без TLS» и слушает локальный порт; ваш
 прокси проксирует все matrix-хосты на `http://MATRIX_HOST:ПОРТ` по Host-заголовку. Примеры конфигов:
 [`examples/traefik-matrix.yaml`](examples/traefik-matrix.yaml) (Traefik), [`examples/nginx-matrix.conf`](examples/nginx-matrix.conf) (nginx/NPM).
+
+Для прямого проброса TURN TLS на Matrix сервер проверьте его собственный сертификат и ALPN:
+[TURN TLS за внешним reverse proxy](docs/TURN-TLS.md).
 **Не вешайте** на эти маршруты middleware, меняющие заголовки — это ломает Element Call и OAuth.
 
 ### Вариант C — домашний Proxmox / за роутером

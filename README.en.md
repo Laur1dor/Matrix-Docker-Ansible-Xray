@@ -71,6 +71,8 @@ The Matrix stack always runs in Docker (the playbook installs it). The differenc
   TLS and forwards every matrix host to `http://MATRIX_HOST:PORT` by Host header. Examples:
   [`examples/traefik-matrix.yaml`](examples/traefik-matrix.yaml), [`examples/nginx-matrix.conf`](examples/nginx-matrix.conf).
   **Don't** attach header-mangling middleware — it breaks Element Call and OAuth.
+  For TURN TLS ports forwarded directly to the Matrix host, check its own certificate and ALPN:
+  [TURN TLS behind an external reverse proxy](docs/TURN-TLS.md).
 - **C — home Proxmox / behind a router:** same as A or B, plus forward 80/443 and the call media ports to the server.
 
 > Call (RTC) media **cannot** go through an HTTP reverse proxy — those ports hit the Matrix host directly.
