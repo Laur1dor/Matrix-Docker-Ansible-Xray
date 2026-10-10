@@ -11,6 +11,7 @@ reverse-proxy** (Traefik / nginx / Nginx Proxy Manager) — на той же и�
 
 > 🇷🇺 Это основной README. 🇬🇧 English: [`README.en.md`](README.en.md).
 > 📖 Что умеет и как пользоваться (простым языком): [`docs/FUNCTIONALITY.ru.md`](docs/FUNCTIONALITY.ru.md).
+> Доступ при белых списках: [исследование и план проверки](docs/WHITELIST-MATRIX.ru.md).
 > ⚠️ **Секреты в git не коммитим** — см. [Безопасность](#-безопасность). В репозитории только шаблоны с плейсхолдерами.
 
 ---
